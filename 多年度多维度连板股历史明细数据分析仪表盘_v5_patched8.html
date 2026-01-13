@@ -1,0 +1,2605 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>多年度多维度连板股历史明细数据分析仪表盘</title>
+
+  <!-- 依赖：SheetJS + ECharts（本地打开即可；依赖 CDN） -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+
+  <style>
+    :root{
+      --bg:#f7f8fb;
+      --card:#ffffff;
+      --border:#e2e8f0;
+      --text:#0f172a;
+      --muted:#64748b;
+      --muted2:#94a3b8;
+      --shadow: 0 6px 20px rgba(15, 23, 42, 0.06);
+      --radius: 14px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      color:var(--text); background:var(--bg);
+    }
+    .wrap{max-width:1600px; margin:0 auto; padding:16px;}
+    .flex{display:flex; gap:14px;}
+    .sidebar{width:280px; flex:0 0 280px;}
+    .sticky{position:sticky; top:14px;}
+    .main{flex:1; min-width:0;}
+    .card{
+      background:var(--card); border:1px solid var(--border);
+      border-radius: var(--radius); box-shadow: var(--shadow);
+      padding:14px;
+    }
+    .h1{font-size:18px; font-weight:900;}
+    .sub{font-size:12px; color:var(--muted); margin-top:6px; line-height:1.6;}
+    .grid{display:grid; gap:12px;}
+    .g2{grid-template-columns:repeat(2,minmax(0,1fr));}
+    .g3{grid-template-columns:repeat(3,minmax(0,1fr));}
+    .g4{grid-template-columns:repeat(4,minmax(0,1fr));}
+    .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
+    .btn{
+      border:1px solid var(--border); background:#fff;
+      border-radius:12px; padding:9px 12px; font-size:12px;
+      cursor:pointer; transition:.15s; white-space:nowrap;
+    }
+    .btn:hover{background:#f8fafc}
+    .btn.primary{background:#0f172a; color:#fff; border-color:#0f172a}
+    .btn.primary:hover{background:#111c33}
+    .btn:disabled{opacity:.5; cursor:not-allowed}
+    .input,.select,textarea{
+      border:1px solid var(--border); border-radius:12px;
+      padding:9px 10px; font-size:12px; background:#fff;
+      outline:none; width:100%;
+    }
+    .select{height:36px}
+    .kpi{
+      border-left:4px solid #6366f1;
+      padding:12px; border-radius:12px; border:1px solid var(--border); background:#fff;
+    }
+    .kpi .t{font-size:12px; color:var(--muted); font-weight:800}
+    .kpi .v{font-size:22px; font-weight:950; margin-top:6px; font-variant-numeric: tabular-nums;}
+    .tiny{font-size:11px; color:var(--muted); line-height:1.6}
+    .hr{height:1px; background:var(--border); margin:12px 0}
+    .navbtn{
+      width:100%; display:flex; justify-content:space-between; align-items:center;
+      border:1px solid var(--border); background:#fff;
+      border-radius:12px; padding:10px 12px; font-size:12px; cursor:pointer;
+    }
+    .navbtn:hover{background:#f8fafc}
+    .navbtn.active{background:#f1f5f9; border-color:#94a3b8; font-weight:950}
+    .badge{
+      display:inline-flex; align-items:center; justify-content:center;
+      min-width:22px; height:18px; padding:0 7px;
+      border-radius:999px; font-size:11px;
+      background:#eef2ff; color:#3730a3; font-variant-numeric: tabular-nums;
+    }
+    .panel{display:none}
+    .panel.show{display:block}
+    .tablewrap{overflow:auto; border:1px solid var(--border); border-radius:12px; background:#fff}
+    table{border-collapse:collapse; width:100%; font-size:12px; min-width:980px}
+    th,td{border-bottom:1px solid #eef2f7; padding:8px 10px; text-align:left; vertical-align:top}
+    th{position:sticky; top:0; background:#f8fafc; z-index:1; color:#475569; text-transform:uppercase; font-size:11px; letter-spacing:.02em}
+    tr:hover td{background:#fafcff}
+    .muted{color:var(--muted)}
+    .statusbar{
+      display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+      padding:10px 12px; border-radius:12px; border:1px dashed var(--border); background:#fff;
+      color:#334155; font-size:12px;
+    }
+    .dot{width:8px; height:8px; border-radius:50%;}
+    .dot.ok{background:#22c55e}
+    .dot.warn{background:#f59e0b}
+    .dot.err{background:#ef4444}
+    .progress{
+      height:10px; background:#e2e8f0; border-radius:999px; overflow:hidden; width:220px;
+    }
+    .progress > div{height:100%; background:#6366f1; width:0%}
+    .kbd{background:#eef2ff; padding:2px 6px; border-radius:8px; font-size:11px; color:#3730a3}
+    @media (max-width: 1100px){
+      .sidebar{display:none}
+      table{min-width:860px}
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="flex">
+    <aside class="sidebar">
+      <div class="card sticky">
+        <div class="h1">功能导航</div>
+        <div class="sub">
+          支持两种入口：<br/>
+          1）直接上传 TradingView 导出的 <span class="kbd">CSV（多文件）</span> 并在浏览器本地计算；<br/>
+          2）上传你用脚本生成的 <span class="kbd">features.xlsx</span>（多 sheet）直接分析。<br/>
+          所有处理均在本地浏览器完成（不上传服务器）。
+        </div>
+
+        <div class="hr"></div>
+
+        <button class="navbtn active" data-nav="overview"><span>概览</span><span class="badge" id="badgeSheets">--</span></button>
+        <div style="height:8px"></div>
+        <button class="navbtn" data-nav="price"><span>行情与连板</span><span class="badge" id="badgeLimitDays">--</span></button>
+        <div style="height:8px"></div>
+        <button class="navbtn" data-nav="features"><span>特征分布</span><span class="badge">A-E</span></button>
+        <div style="height:8px"></div>
+        <button class="navbtn" data-nav="events"><span>连板事件清单</span><span class="badge" id="badgeEvents">--</span></button>
+        <div style="height:8px"></div>
+        
+        <div style="height:8px"></div>
+        <button class="navbtn" data-nav="selloff"><span>退潮/收割模块</span><span class="badge">NEW</span></button>
+<button class="navbtn" data-nav="export"><span>批量导出</span><span class="badge">XLSX</span></button>
+
+        <div class="hr"></div>
+        <div class="tiny">连板口径（可解释、可调整）：<br/>
+          <span class="kbd">limitup_10_flag</span> = (close/prevclose - 1 ≥ 0.097) 且 close==high。<br/>
+          注：这是“10% 体系”的经验判定，ST/20cm/停牌复牌等需要你另行修正口径。
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="card">
+        <div class="h1">多年度多维度连板股历史明细数据分析仪表盘</div>
+        <div class="sub">
+          面向“连板股起涨前是否有可量化蛛丝马迹”的探索：把 OHLCV/技术指标/指数对比变成可批量计算的特征字段，并对“起涨前 20/40/60 个交易日窗口”做统计对照。
+        </div>
+
+        <div class="hr"></div>
+
+        <div class="grid g2">
+          <div class="card" style="box-shadow:none">
+            <div style="font-weight:950; font-size:13px">数据上传</div>
+            <div class="tiny" style="margin-top:6px">
+              - CSV：TradingView 导出（建议日线，字段含 time/open/high/low/close/Volume；指数列可选）<br/>
+              - XLSX：脚本输出（每个 CSV 一张工作表 + events/summary）
+            </div>
+
+            <div class="grid g3" style="margin-top:10px">
+              <div>
+                <div class="tiny" style="font-weight:900; color:#0f172a">上传 TradingView CSV（多文件）</div>
+                <input class="input" type="file" id="upCsv" multiple accept=".csv"/>
+              </div>
+              <div>
+                <div class="tiny" style="font-weight:900; color:#0f172a">上传 features.xlsx（可选）</div>
+                <input class="input" type="file" id="upXlsx" accept=".xlsx,.xls"/>
+              </div>
+            </div>
+
+            <div class="row" style="margin-top:10px">
+              <button class="btn primary" id="btnParse">读取/计算并生成分析</button>
+              <button class="btn" id="btnReset">清空页面数据</button>
+            </div>
+
+            <div style="margin-top:10px" class="statusbar">
+              <span class="dot warn" id="statusDot"></span>
+              <span id="statusText">尚未读取数据。</span>
+              <div class="progress"><div id="progressBar"></div></div>
+              <span class="tiny" id="progressText"></span>
+            </div>
+          </div>
+
+          <div class="card" style="box-shadow:none">
+            <div style="font-weight:950; font-size:13px">筛选</div>
+            <div class="tiny" style="margin-top:6px">筛选联动所有模块。</div>
+
+            <div class="grid g2" style="margin-top:10px">
+              <div>
+                <div class="tiny" style="font-weight:900; color:#0f172a">标的/工作表</div>
+                <select class="select" id="selSheet"></select>
+              </div>
+              <div>
+                <div class="tiny" style="font-weight:900; color:#0f172a">呈现模式</div>
+                <select class="select" id="selMode">
+                  <option value="single">个股（单标的）</option>
+                  <option value="all">全样本合并（所有上传）</option>
+                </select>
+              </div>
+
+              <div>
+                <div class="tiny" style="font-weight:900; color:#0f172a">连板阈值（天）</div>
+                <select class="select" id="selMinStreak">
+                  <option value="1">≥1</option>
+                  <option value="2">≥2</option>
+                  <option value="3">≥3</option>
+                  <option value="5">≥5</option>
+                  <option value="7">≥7</option>
+                  <option value="10">≥10</option>
+                </select>
+              </div>
+              <div>
+                <div class="tiny" style="font-weight:900; color:#0f172a">起涨前窗口</div>
+                <select class="select" id="selLookback">
+                  <option value="20">20 bars</option>
+                  <option value="40">40 bars</option>
+                  <option value="60">60 bars</option>
+                </select>
+              </div>
+              <div>
+                <div class="tiny" style="font-weight:900; color:#0f172a">日期范围</div>
+                <div class="row" style="gap:6px">
+                  <input class="input" type="date" id="dStart" style="width:48%"/>
+                  <input class="input" type="date" id="dEnd" style="width:48%"/>
+                </div>
+              </div>
+            </div>
+
+            <div class="row" style="margin-top:10px">
+              <button class="btn primary" id="btnApply">应用筛选</button>
+              <span class="tiny muted" id="noteField"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panels -->
+      <section class="panel show" id="p_overview">
+        <div class="grid g4" style="margin-top:14px">
+          <div class="kpi"><div class="t">Bars</div><div class="v" id="k_bars">--</div></div>
+          <div class="kpi" style="border-left-color:#ef4444"><div class="t">Limit-up Days (10%)</div><div class="v" id="k_limit">--</div></div>
+          <div class="kpi" style="border-left-color:#22c55e"><div class="t">Streak Events</div><div class="v" id="k_events">--</div></div>
+          <div class="kpi" style="border-left-color:#0ea5e9"><div class="t">Max Streak</div><div class="v" id="k_maxstreak">--</div></div>
+        </div>
+
+        <div class="grid g2" style="margin-top:14px">
+          <div class="card">
+            <div class="row" style="justify-content:space-between">
+              <div style="font-weight:950">连板长度分布</div><div class="tiny">柱状图</div>
+            </div>
+            <div id="c_streakDist" style="height:360px"></div>
+          </div>
+          <div class="card">
+            <div class="row" style="justify-content:space-between">
+              <div style="font-weight:950">连板事件时间轴（按起涨日）</div><div class="tiny">散点/时间轴</div>
+            </div>
+            <div id="c_eventTimeline" style="height:360px"></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:14px">
+          <div class="row" style="justify-content:space-between">
+            <div>
+              <div style="font-weight:950">起涨前窗口：特征均值对比（示例）</div>
+              <div class="tiny">选定 lookback 后，计算“每个连板事件起涨前”的指标均值；用于找蛛丝马迹。</div>
+            </div>
+            <div class="tiny">条形图</div>
+          </div>
+          <div id="c_preEventMean" style="height:360px"></div>
+        </div>
+      </section>
+
+      <section class="panel" id="p_price">
+        <div class="grid g2" style="margin-top:14px">
+          <div class="card">
+            <div class="row" style="justify-content:space-between">
+              <div style="font-weight:950">连板结束后：最大回撤分布（未来60日）</div><div class="tiny">箱线/柱状</div>
+            </div>
+            <div id="c_postDrawdown" style="height:360px"></div>
+          </div>
+          <div class="card">
+            <div class="row" style="justify-content:space-between">
+              <div style="font-weight:950">事件研究：归一化价格路径（起涨日=0）</div><div class="tiny">均值 + 分位带</div>
+            </div>
+            <div id="c_eventStudy" style="height:360px"></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:14px">
+          <div class="row" style="justify-content:space-between">
+            <div>
+              <div class="h1">行情与连板标记</div>
+              <div class="sub">K 线 + 成交量，并标注连板日（limitup_10_flag）。</div>
+            </div>
+            <div class="row">
+              <button class="btn" id="btnZoomAll">全量</button>
+              <button class="btn" id="btnZoom2Y">近两年</button>
+              <button class="btn" id="btnZoom1Y">近一年</button>
+            </div>
+          </div>
+          <div id="c_kline" style="height:520px; margin-top:8px"></div>
+        </div>
+      </section>
+
+      <section class="panel" id="p_features">
+        <div class="grid g2" style="margin-top:14px">
+          <div class="card">
+            <div class="row" style="justify-content:space-between">
+              <div style="font-weight:950">散点：vol_ratio_20 vs ret_1d</div><div class="tiny">是否“量能先行”</div>
+            </div>
+            <div id="c_scatter" style="height:360px"></div>
+          </div>
+          <div class="card">
+            <div class="row" style="justify-content:space-between">
+              <div style="font-weight:950">波动率与带宽</div><div class="tiny">hv_20 / bb_bw_20</div>
+            </div>
+            <div id="c_vol" style="height:360px"></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:14px">
+          <div class="row" style="justify-content:space-between">
+            <div style="font-weight:950">明细预览（前 80 行）</div>
+            <div class="row">
+              <button class="btn" id="btnExportSheetCsv">导出当前表 CSV（含特征）</button>
+            </div>
+          </div>
+          <div class="tablewrap" style="margin-top:10px">
+            <table>
+              <thead><tr id="tbl_head"></tr></thead>
+              <tbody id="tbl_body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" id="p_events">
+        <div class="card" style="margin-top:14px">
+          <div class="row" style="justify-content:space-between">
+            <div>
+              <div class="h1">连板事件清单</div>
+              <div class="sub">按“连板序列”汇总：起涨日、结束日、长度、起涨前关键特征，以及连板结束后的回撤/收益（新增）。全样本模式下含 file_name。</div>
+            </div>
+            <div class="row">
+              <button class="btn" id="btnExportEventsCsv">导出事件清单 CSV</button>
+            </div>
+          </div>
+          <div class="tablewrap" style="margin-top:10px">
+            <table>
+              <thead><tr id="evt_head"></tr></thead>
+              <tbody id="evt_body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      
+      <section class="panel" id="p_selloff">
+        <div class="card" style="margin-top:14px">
+          <div class="row" style="justify-content:space-between">
+            <div>
+              <div class="h1">退潮/收割模块</div>
+              <div class="sub">
+                以“连板结束日”为锚点，分析后续退潮强度、诱多再杀形态、以及哪些起涨前特征与退潮/收割最相关（全样本合并模式尤其有用）。
+              </div>
+            </div>
+            <div class="row">
+              <div class="tiny muted">目标变量</div>
+              <select class="select" id="selRankTarget" style="width:240px">
+                <option value="post_max_drawdown_60d">post_max_drawdown_60d（未来60日最大回撤）</option>
+                <option value="post_peak_to_trough_60d">post_peak_to_trough_60d（峰值后再杀跌幅）</option>
+                <option value="streak_len">streak_len（连板长度）</option>
+              </select>
+            </div>
+          </div>
+            <div class="row">
+              <div class="tiny muted">快杀阈值</div>
+              <input class="input" id="inpKillTh" type="number" step="0.01" value="-0.20" style="width:140px" />
+              <div class="tiny muted">窗口（日）</div>
+              <select class="select" id="selKillH" style="width:140px">
+                <option value="5">5</option>
+                <option value="10" selected>10</option>
+                <option value="20">20</option>
+              </select>
+              <button class="btn" id="btnRecalcSelloff">重算/刷新</button>
+            </div>
+
+
+          <div class="hr"></div>
+
+          <div class="grid g2">
+            <div class="card">
+              <div class="row" style="justify-content:space-between">
+                <div style="font-weight:950">分桶箱线图：未来60日最大回撤</div><div class="tiny">按连板长度分桶</div>
+              </div>
+              <div id="c_box_dd60" style="height:360px"></div>
+            </div>
+            <div class="card">
+              <div class="row" style="justify-content:space-between">
+                <div style="font-weight:950">分桶箱线图：诱多再杀跌幅（峰→谷）</div><div class="tiny">post_peak_to_trough_60d</div>
+              </div>
+              <div id="c_box_peak2trough" style="height:360px"></div>
+            </div>
+          </div>
+
+          <div class="grid g2" style="margin-top:14px">
+            <div class="card">
+              <div class="row" style="justify-content:space-between">
+                <div style="font-weight:950">特征排名：起涨前窗口均值 vs 目标变量</div><div class="tiny">Spearman 相关（稳健）</div>
+              </div>
+              <div class="tiny muted" style="margin-top:6px">
+                使用你选择的 lookback（20/40/60）对每个事件的起涨前窗口做均值特征，并与目标变量做 Spearman 相关，输出 Top 12。
+              </div>
+              <div id="c_rank" style="height:360px"></div>
+            </div>
+            <div class="card">
+              <div class="row" style="justify-content:space-between">
+                <div style="font-weight:950">诱多再杀：反抽幅度 vs 再杀跌幅</div><div class="tiny">快杀/慢跌 + 流动性抽离</div>
+              </div>
+              <div id="c_bulltrap" style="height:360px"></div>
+              <div class="tiny muted" style="margin-top:8px">
+                点大小≈连板长度；可用于观察“先给反抽（runup）再深杀（peak→trough）”的聚集区域。
+              </div>
+            </div>
+          </div>
+
+          
+          <div class="grid g2" style="margin-top:14px">
+            <div class="card">
+              <div class="row" style="justify-content:space-between">
+                <div style="font-weight:950">快杀概率：窗口内回撤 ≤ 阈值</div><div class="tiny">按连板长度分桶 + 全局</div>
+              </div>
+              <div id="c_killspeed_prob" style="height:360px"></div>
+            </div>
+            <div class="card">
+              <div class="row" style="justify-content:space-between">
+                <div style="font-weight:950">时间结构：time_to_peak vs time_to_trough</div><div class="tiny">快杀/慢跌/先拉后杀</div>
+              </div>
+              <div id="c_timequad" style="height:360px"></div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:14px">
+            <div class="row" style="justify-content:space-between">
+              <div style="font-weight:950">时间分布：到峰/到谷</div><div class="tiny">直方/密度</div>
+            </div>
+            <div id="c_timehist" style="height:360px"></div>
+          </div>
+
+          
+          <div class="card" style="margin-top:14px">
+            <div class="row" style="justify-content:space-between">
+              <div style="font-weight:950">起涨前量价结构象限：vol_ratio_20 vs candle_body_pct</div><div class="tiny">按起涨前 20/40/60 日分层（事件级均值）</div>
+            </div>
+            <div class="tiny muted" style="margin-top:6px">
+              每个点代表一段连板事件：x=起涨前窗口内 vol_ratio_20 均值；y=起涨前窗口内 candle_body_pct 均值；点大小≈连板长度。
+            </div>
+            <div id="c_quadrant_vr_body" style="height:420px"></div>
+          </div>
+<div class="grid g2" style="margin-top:14px">
+            <div class="card">
+              <div class="row" style="justify-content:space-between">
+                <div style="font-weight:950">剧本分类（主类）：占比</div><div class="tiny">互斥主类（按优先级归类）</div>
+              </div>
+              <div id="c_script_pie" style="height:360px"></div>
+            </div>
+            <div class="card">
+              <div class="row" style="justify-content:space-between">
+                <div style="font-weight:950">剧本分类：按连板长度分桶（堆叠）</div><div class="tiny">每桶数量</div>
+              </div>
+              <div id="c_script_stack" style="height:360px"></div>
+            </div>
+          </div>
+<div class="card" style="margin-top:14px">
+            <div class="row" style="justify-content:space-between">
+              <div style="font-weight:950">事件清单补充字段（新增）</div>
+              <div class="tiny">post_peak_to_trough_60d / time_to_peak_60d / time_to_trough_60d / dead_cat_bounce_flag / distribution_days_ratio_20d / support_break_speed_* / volatility_regime_shift_flag / script_primary / liquidity_drop</div>
+            </div>
+            <div class="tiny muted" style="margin-top:6px">
+              这些字段也会进入“连板事件清单”与导出的 events CSV/XLSX，便于你交给 AI 做二次处理。
+            </div>
+          </div>
+
+        </div>
+      </section>
+<section class="panel" id="p_export">
+        <div class="card" style="margin-top:14px">
+          <div class="h1">批量导出</div>
+          <div class="sub">
+            当你上传多个 CSV 后，本页支持导出一个合并后的 <span class="kbd">XLSX</span>（每个 CSV 一张工作表，工作表名=文件名）。<br/>
+            该 XLSX 适合交给 AI 做二次处理（字段为英文）。
+          </div>
+          <div class="hr"></div>
+          <div class="row">
+            <button class="btn primary" id="btnExportXlsx">导出合并后的 XLSX</button>
+            <span class="tiny muted" id="exportNote"></span>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<script>
+/* =========================
+   Global state
+========================= */
+const PALETTE = ["#6366f1","#ef4444","#22c55e","#0ea5e9","#f59e0b","#a855f7","#14b8a6","#f97316","#e11d48","#84cc16"];
+const state = {
+  sheets: {},     // sheetName -> {rows:[], events:[], summary:{}}
+  sheetOrder: [],
+  active: null,
+  filteredRows: [],
+  filteredEvents: [],
+  zoomMode: "all",
+};
+
+function $(id){ return document.getElementById(id); }
+function toStr(v){ return (v==null) ? "" : String(v).trim(); }
+function fmtInt(n){
+  const x = Number(n||0);
+  if (!isFinite(x)) return "0";
+  return Math.round(x).toLocaleString("zh-CN");
+}
+function setStatus(msg, level="warn"){
+  $("statusText").textContent = msg;
+  const dot = $("statusDot");
+  dot.className = "dot " + (level==="ok"?"ok":(level==="err"?"err":"warn"));
+}
+function setProgress(p, msg=""){
+  $("progressBar").style.width = `${Math.max(0,Math.min(100,p))}%`;
+  $("progressText").textContent = msg;
+}
+function safeSheetName(name){
+  return name.replace(/[\\\/\?\*\[\]\:]/g,"_").slice(0,31) || "Sheet";
+}
+
+/* =========================
+   CSV parsing (simple, enough for TradingView)
+========================= */
+function parseCSV(text){
+  const lines = text.split(/\r?\n/).filter(x=>x.trim().length>0);
+  if (!lines.length) return {header:[], rows:[]};
+  const header = splitCSVLine(lines[0]).map(h=>normalizeHeader(h));
+  const rows = [];
+  for (let i=1;i<lines.length;i++){
+    const parts = splitCSVLine(lines[i]);
+    if (!parts.length) continue;
+    const obj = {};
+    for (let j=0;j<header.length;j++){
+      obj[header[j]] = parts[j] ?? "";
+    }
+    const has = Object.values(obj).some(v=>toStr(v)!=="");
+    if (has) rows.push(obj);
+  }
+  return {header, rows};
+}
+function splitCSVLine(line){
+  const out=[]; let cur=""; let inQ=false;
+  for (let i=0;i<line.length;i++){
+    const ch=line[i];
+    if (ch === '"'){ inQ=!inQ; continue; }
+    if (ch === "," && !inQ){ out.push(cur); cur=""; continue; }
+    cur += ch;
+  }
+  out.push(cur);
+  return out.map(x=>x.trim());
+}
+function normalizeHeader(h){
+  let s=toStr(h).replace("\ufeff","").replaceAll("路","·");
+  s=s.replace(/\s+/g," ").trim();
+  return s;
+}
+function dropIgnoredKeys(keys){
+  return keys.filter(k=>{
+    const kk = k.toLowerCase();
+    if (kk.startsWith("regular bullish")) return false;
+    if (kk.startsWith("regular bearish")) return false;
+    if (kk.endsWith("label")) return false;
+    return true;
+  });
+}
+
+/* =========================
+   Feature computation in JS
+   (matches the Python script field names)
+========================= */
+function num(x){
+  const s=toStr(x).replace(/,/g,"");
+  const n = Number(s);
+  return isFinite(n) ? n : NaN;
+}
+function pctChange(arr, lag=1){
+  const out = new Array(arr.length).fill(NaN);
+  for (let i=lag;i<arr.length;i++){
+    const a = arr[i-lag], b = arr[i];
+    if (isFinite(a) && isFinite(b) && a!==0){
+      out[i] = b/a - 1;
+    }
+  }
+  return out;
+}
+function logRet(arr){
+  const out = new Array(arr.length).fill(NaN);
+  for (let i=1;i<arr.length;i++){
+    const a = arr[i-1], b = arr[i];
+    if (isFinite(a) && isFinite(b) && a>0 && b>0){
+      out[i] = Math.log(b/a);
+    }
+  }
+  return out;
+}
+function rollingMean(arr, win){
+  const out = new Array(arr.length).fill(NaN);
+  let sum=0, cnt=0;
+  const q=[];
+  for (let i=0;i<arr.length;i++){
+    const v=arr[i];
+    q.push(v);
+    if (isFinite(v)){ sum += v; cnt += 1; }
+    if (q.length>win){
+      const old=q.shift();
+      if (isFinite(old)){ sum -= old; cnt -= 1; }
+    }
+    if (q.length>=Math.min(5,win) && cnt>0){
+      out[i] = sum/cnt;
+    }
+  }
+  return out;
+}
+function rollingStd(arr, win){
+  const out = new Array(arr.length).fill(NaN);
+  const q=[];
+  for (let i=0;i<arr.length;i++){
+    q.push(arr[i]);
+    if (q.length>win) q.shift();
+    const vals = q.filter(v=>isFinite(v));
+    if (vals.length>=Math.min(5,win)){
+      const m = vals.reduce((a,b)=>a+b,0)/vals.length;
+      const v = vals.reduce((a,b)=>a+(b-m)*(b-m),0)/Math.max(1,vals.length-1);
+      out[i] = Math.sqrt(v);
+    }
+  }
+  return out;
+}
+function rollingMax(arr, win){
+  const out = new Array(arr.length).fill(NaN);
+  const q=[];
+  for (let i=0;i<arr.length;i++){
+    q.push(arr[i]);
+    if (q.length>win) q.shift();
+    const vals = q.filter(v=>isFinite(v));
+    if (vals.length>=2){
+      out[i] = Math.max(...vals);
+    }
+  }
+  return out;
+}
+function rollingApplyRankPct(arr, win){
+  const out = new Array(arr.length).fill(NaN);
+  const q=[];
+  for (let i=0;i<arr.length;i++){
+    q.push(arr[i]);
+    if (q.length>win) q.shift();
+    const vals = q.filter(v=>isFinite(v));
+    if (vals.length>=10 && isFinite(arr[i])){
+      const sorted = vals.slice().sort((a,b)=>a-b);
+      const idx = sorted.findIndex(x=>x>=arr[i]);
+      const rank = (idx>=0?idx:sorted.length-1) + 1;
+      out[i] = rank / sorted.length;
+    }
+  }
+  return out;
+}
+
+function findIndexCloseKey(keys, code){
+  const lc = keys.map(k=>k.toLowerCase());
+  for (let i=0;i<keys.length;i++){
+    if (keys[i].includes(code) && lc[i].includes("close")) return keys[i];
+  }
+  for (let i=0;i<keys.length;i++){
+    if (keys[i].includes(code)){
+      for (let j=i;j<Math.min(i+6,keys.length);j++){
+        if (lc[j].includes("close")) return keys[j];
+      }
+    }
+  }
+  return null;
+}
+
+function computeRowsWithFeatures(rawRows){
+  if (!rawRows.length) return [];
+  const keys = dropIgnoredKeys(Object.keys(rawRows[0]||{}));
+
+  const idx300Key = findIndexCloseKey(keys, "000300");
+  const idx001Key = findIndexCloseKey(keys, "000001");
+
+  // arrays
+  const time = rawRows.map(r=>num(r["time"]));
+  const open = rawRows.map(r=>num(r["open"]));
+  const high = rawRows.map(r=>num(r["high"]));
+  const low  = rawRows.map(r=>num(r["low"]));
+  const close= rawRows.map(r=>num(r["close"]));
+  const vol  = rawRows.map(r=>num(r["Volume"]));
+  const idx300 = idx300Key ? rawRows.map(r=>num(r[idx300Key])) : rawRows.map(_=>NaN);
+  const idx001 = idx001Key ? rawRows.map(r=>num(r[idx001Key])) : rawRows.map(_=>NaN);
+
+  // date (unix seconds -> YYYY-MM-DD in Asia/Shanghai)
+  const date = time.map(ts=>{
+    if (!isFinite(ts)) return "";
+    const d = new Date(ts*1000);
+    // convert to Asia/Shanghai by manual offset +8 (TradingView daily usually at 00:00 UTC)
+    const cn = new Date(d.getTime() + 8*3600*1000);
+    const y=cn.getUTCFullYear();
+    const m=String(cn.getUTCMonth()+1).padStart(2,"0");
+    const dd=String(cn.getUTCDate()).padStart(2,"0");
+    return `${y}-${m}-${dd}`;
+  });
+
+  // returns
+  const ret1 = pctChange(close,1);
+  const log1 = logRet(close);
+  const ret5 = pctChange(close,5);
+  const ret10= pctChange(close,10);
+  const ret20= pctChange(close,20);
+  const ret60= pctChange(close,60);
+
+  const ex1_300 = ret1.map((v,i)=> v - pctChange(idx300,1)[i]);
+  const ex1_001 = ret1.map((v,i)=> v - pctChange(idx001,1)[i]);
+  const ex60_300= ret60.map((v,i)=> v - pctChange(idx300,60)[i]);
+
+  const rollMax60 = rollingMax(close,60);
+  const drawdown60 = close.map((c,i)=> (isFinite(c) && isFinite(rollMax60[i]) && rollMax60[i]!==0) ? (c/rollMax60[i]-1) : NaN);
+
+  // breakout flag (close > prior 60d max)
+  const priorMax60 = rollingMax(close.map((v,i)=> i===0?NaN:close[i-1]),60);
+  const breakoutFlag = close.map((c,i)=> (isFinite(c) && isFinite(priorMax60[i]) && c>priorMax60[i]) ? 1 : 0);
+  const breakoutCount60 = (function(){
+    const out=new Array(close.length).fill(0);
+    const q=[];
+    let sum=0;
+    for (let i=0;i<breakoutFlag.length;i++){
+      q.push(breakoutFlag[i]);
+      sum += breakoutFlag[i];
+      if (q.length>60){ sum -= q.shift(); }
+      out[i]=sum;
+    }
+    return out;
+  })();
+
+  // True range + ATR14
+  const tr = close.map((_,i)=>{
+    const prev = (i>0)?close[i-1]:NaN;
+    const a = high[i]-low[i];
+    const b = isFinite(prev)?Math.abs(high[i]-prev):NaN;
+    const c = isFinite(prev)?Math.abs(low[i]-prev):NaN;
+    const m = [a,b,c].filter(v=>isFinite(v));
+    return m.length?Math.max(...m):NaN;
+  });
+  const atr14 = rollingMean(tr,14);
+
+  // HV20 annualized
+  const sd20 = rollingStd(log1,20);
+  const hv20 = sd20.map(v=> isFinite(v) ? v*Math.sqrt(252) : NaN);
+
+  // BB
+  const ma20 = rollingMean(close,20);
+  const sdClose20 = rollingStd(close,20);
+  const bb_bw_20 = close.map((_,i)=> (isFinite(sdClose20[i]) && isFinite(ma20[i]) && ma20[i]!==0) ? (4*sdClose20[i]/ma20[i]) : NaN);
+
+  // Volume
+  const vol_ma20 = rollingMean(vol,20);
+  const vol_sd20 = rollingStd(vol,20);
+  const vol_ratio_20 = vol.map((v,i)=> (isFinite(v) && isFinite(vol_ma20[i]) && vol_ma20[i]!==0) ? v/vol_ma20[i] : NaN);
+  const vol_z_20 = vol.map((v,i)=> (isFinite(v) && isFinite(vol_ma20[i]) && isFinite(vol_sd20[i]) && vol_sd20[i]!==0) ? (v-vol_ma20[i])/vol_sd20[i] : NaN);
+  const vol_pct_rank_60 = rollingApplyRankPct(vol,60);
+  const vol_spike_flag = vol_ratio_20.map(v=> (isFinite(v) && v>=2.0) ? 1 : 0);
+  const vol_spike_ratio_20d = (function(){
+    const out=new Array(vol_spike_flag.length).fill(NaN);
+    const q=[]; let sum=0;
+    for (let i=0;i<vol_spike_flag.length;i++){
+      q.push(vol_spike_flag[i]);
+      sum += vol_spike_flag[i];
+      if (q.length>20) sum -= q.shift();
+      out[i]= sum / q.length;
+    }
+    return out;
+  })();
+
+  const pv_div_price_up_vol_down = ret1.map((r,i)=> (isFinite(r) && r>0 && isFinite(vol_ratio_20[i]) && vol_ratio_20[i]<1.0) ? 1 : 0);
+  const pv_div_price_flat_vol_up = ret1.map((r,i)=> (isFinite(r) && Math.abs(r)<0.01 && isFinite(vol_ratio_20[i]) && vol_ratio_20[i]>1.5) ? 1 : 0);
+
+  // Candlestick
+  const body = close.map((c,i)=> Math.abs(c-open[i]));
+  const range = close.map((_,i)=> high[i]-low[i]);
+  const upper = close.map((_,i)=> high[i]-Math.max(open[i], close[i]));
+  const lower = close.map((_,i)=> Math.min(open[i], close[i]) - low[i]);
+  const bodyPct = range.map((r,i)=> (isFinite(r) && r>0) ? body[i]/r : NaN);
+  const upperPct= range.map((r,i)=> (isFinite(r) && r>0) ? upper[i]/r : NaN);
+  const lowerPct= range.map((r,i)=> (isFinite(r) && r>0) ? lower[i]/r : NaN);
+
+  // Gaps
+  const gap = close.map((_,i)=> (i>0 && isFinite(open[i]) && isFinite(close[i-1]) && close[i-1]!==0) ? (open[i]/close[i-1]-1) : NaN);
+  const gapUp = gap.map(g=> (isFinite(g) && g>0.01)?1:0);
+  const gapDn = gap.map(g=> (isFinite(g) && g<-0.01)?1:0);
+
+  // Relative ratios
+  const rs_ratio_300 = close.map((c,i)=> (isFinite(c) && isFinite(idx300[i]) && idx300[i]!==0) ? c/idx300[i] : NaN);
+  const rs_ratio_001 = close.map((c,i)=> (isFinite(c) && isFinite(idx001[i]) && idx001[i]!==0) ? c/idx001[i] : NaN);
+
+  // limit-up (10% heuristic)
+  const limitFlag = close.map((c,i)=>{
+    if (i===0) return 0;
+    const prev=close[i-1];
+    if (!isFinite(c) || !isFinite(prev) || prev===0) return 0;
+    const r=c/prev - 1;
+    return (r>=0.097 && c===high[i]) ? 1 : 0;
+  });
+
+  // streak & seq id
+  const streak=new Array(limitFlag.length).fill(0);
+  const seqId=new Array(limitFlag.length).fill(0);
+  let cur=0, sid=0, prev=0;
+  for (let i=0;i<limitFlag.length;i++){
+    const v=limitFlag[i];
+    if (v===1){
+      cur += 1;
+      if (prev===0) sid += 1;
+      streak[i]=cur;
+      seqId[i]=sid;
+    } else {
+      cur=0;
+      streak[i]=0;
+      seqId[i]=0;
+    }
+    prev=v;
+  }
+  const firstDay = limitFlag.map((v,i)=> (v===1 && streak[i]===1)?1:0);
+
+  // Build row objects
+  const out = [];
+  for (let i=0;i<rawRows.length;i++){
+    const r = rawRows[i];
+    const o = {};
+    // keep original keys
+    keys.forEach(k=>{ o[k]=r[k]; });
+
+    o["date"]=date[i];
+
+    o["open_px"]=open[i];
+    o["high_px"]=high[i];
+    o["low_px"]=low[i];
+    o["close_px"]=close[i];
+    o["volume"]=vol[i];
+    o["idx_000300_close"]=idx300[i];
+    o["idx_000001_close"]=idx001[i];
+
+    o["ret_1d"]=ret1[i];
+    o["logret_1d"]=log1[i];
+    o["ret_5d"]=ret5[i];
+    o["ret_10d"]=ret10[i];
+    o["ret_20d"]=ret20[i];
+    o["ret_60d"]=ret60[i];
+    o["excess_ret_1d_vs_000300"]=ex1_300[i];
+    o["excess_ret_1d_vs_000001"]=ex1_001[i];
+    o["excess_ret_60d_vs_000300"]=ex60_300[i];
+
+    o["drawdown_60d"]=drawdown60[i];
+    o["breakout_60d_flag"]=breakoutFlag[i];
+    o["breakout_60d_count_60d"]=breakoutCount60[i];
+
+    o["true_range"]=tr[i];
+    o["atr_14"]=atr14[i];
+    o["hv_20_annualized"]=hv20[i];
+
+    o["bb_ma_20"]=ma20[i];
+    o["bb_sd_20"]=sdClose20[i];
+    o["bb_bw_20"]=bb_bw_20[i];
+
+    o["vol_ma_20"]=vol_ma20[i];
+    o["vol_ratio_20"]=vol_ratio_20[i];
+    o["vol_z_20"]=vol_z_20[i];
+    o["vol_pct_rank_60"]=vol_pct_rank_60[i];
+    o["vol_spike_flag"]=vol_spike_flag[i];
+    o["vol_spike_ratio_20d"]=vol_spike_ratio_20d[i];
+    o["pv_div_price_up_vol_down"]=pv_div_price_up_vol_down[i];
+    o["pv_div_price_flat_vol_up"]=pv_div_price_flat_vol_up[i];
+
+    o["candle_real_body"]=body[i];
+    o["candle_range"]=range[i];
+    o["candle_upper_shadow"]=upper[i];
+    o["candle_lower_shadow"]=lower[i];
+    o["candle_body_pct"]=bodyPct[i];
+    o["candle_upper_shadow_pct"]=upperPct[i];
+    o["candle_lower_shadow_pct"]=lowerPct[i];
+
+    o["gap_open_vs_prevclose"]=gap[i];
+    o["gap_up_flag"]=gapUp[i];
+    o["gap_down_flag"]=gapDn[i];
+
+    o["rs_ratio_vs_000300"]=rs_ratio_300[i];
+    o["rs_ratio_vs_000001"]=rs_ratio_001[i];
+
+    o["limitup_10_flag"]=limitFlag[i];
+    o["limitup_streak"]=streak[i];
+    o["limitup_seq_id"]=seqId[i];
+    o["limitup_first_day_flag"]=firstDay[i];
+
+    out.push(o);
+  }
+  return out;
+}
+
+function buildEvents(rows, fileName=""){
+  // group by limitup_seq_id; compute pre-event snapshot + post-event outcomes
+  const by = new Map();
+  rows.forEach((r,idx)=>{
+    const sid = Number(r["limitup_seq_id"]||0);
+    if (sid>0){
+      if (!by.has(sid)) by.set(sid, []);
+      by.get(sid).push({idx, r});
+    }
+  });
+
+  const getClose = (i)=> Number(rows[i]?.close_px);
+  const safeRet = (i0, i1)=>{
+    const a=getClose(i0), b=getClose(i1);
+    if (!isFinite(a) || !isFinite(b) || a===0) return null;
+    return b/a - 1;
+  };
+  const windowStats = (i0, win)=>{
+    // from i0+1 to i0+win
+    const s = i0+1;
+    const e = Math.min(rows.length-1, i0+win);
+    if (s>e) return {min:null, max:null, minIdx:null, maxIdx:null};
+    let mn=Infinity, mx=-Infinity, mnI=null, mxI=null;
+    for (let i=s;i<=e;i++){
+      const c = getClose(i);
+      if (!isFinite(c)) continue;
+      if (c<mn){ mn=c; mnI=i; }
+      if (c>mx){ mx=c; mxI=i; }
+    }
+    if (mn===Infinity) return {min:null, max:null, minIdx:null, maxIdx:null};
+    return {min:mn, max:mx, minIdx:mnI, maxIdx:mxI};
+  };
+
+  const events=[];
+  for (const [sid, arr] of by.entries()){
+    arr.sort((a,b)=>a.idx-b.idx);
+    const start = arr[0];
+    const end = arr[arr.length-1];
+    const streakLen = Math.max(...arr.map(x=>Number(x.r["limitup_streak"]||0)));
+
+    const startIdx = start.idx;
+    const endIdx = end.idx;
+
+    const beforeIdx = startIdx - 1;
+    const before = (k)=> (beforeIdx>=0) ? rows[beforeIdx][k] : null;
+
+    const endClose = getClose(endIdx);
+    const ret5  = (endIdx+5  < rows.length) ? safeRet(endIdx, endIdx+5)  : null;
+    const ret10 = (endIdx+10 < rows.length) ? safeRet(endIdx, endIdx+10) : null;
+    const ret20 = (endIdx+20 < rows.length) ? safeRet(endIdx, endIdx+20) : null;
+    const ret60 = (endIdx+60 < rows.length) ? safeRet(endIdx, endIdx+60) : null;
+
+    const w20 = windowStats(endIdx, 20);
+    const w60 = windowStats(endIdx, 60);
+
+    
+    // Overall trough timing in next 60d (fast kill vs slow bleed)
+    const timeToTrough60 = (w60.minIdx!=null) ? (w60.minIdx - endIdx) : null;
+
+    
+    const timeToPeak60 = (w60.maxIdx!=null) ? (w60.maxIdx - endIdx) : null;
+// Peak-to-trough after a rebound: find peak (max) in next 60d, then trough AFTER that peak
+    let peakToTrough60 = null;
+    let timePeakToTrough60 = null;
+    if (w60.maxIdx!=null){
+      const peakIdx = w60.maxIdx;
+      const peakPx = w60.max;
+      if (peakIdx!=null && isFinite(peakPx) && peakIdx < Math.min(rows.length-1, endIdx+60)){
+        const s2 = peakIdx + 1;
+        const e2 = Math.min(rows.length-1, endIdx+60);
+        let trough = Infinity;
+        let troughIdx = null;
+        for (let i=s2;i<=e2;i++){
+          const c = getClose(i);
+          if (!isFinite(c)) continue;
+          if (c < trough){ trough = c; troughIdx = i; }
+        }
+        if (trough !== Infinity && isFinite(peakPx) && peakPx!==0){
+          peakToTrough60 = trough/peakPx - 1; // negative => drop
+          timePeakToTrough60 = (troughIdx!=null) ? (troughIdx - peakIdx) : null;
+        }
+      }
+    }
+
+    // Liquidity drop: mean volume after end vs before end (20d windows)
+    const meanVol = (a,b)=>{
+      let ss=0, cc=0;
+      for (let i=a;i<=b;i++){
+        const v = Number(rows[i]?.volume);
+        if (isFinite(v)){
+          ss += v; cc += 1;
+        }
+      }
+      return cc>0 ? ss/cc : null;
+    };
+    const preA = Math.max(0, endIdx-19), preB = endIdx;
+    const postA = endIdx+1, postB = Math.min(rows.length-1, endIdx+20);
+    const preVol = (preA<=preB) ? meanVol(preA, preB) : null;
+    const postVol = (postA<=postB) ? meanVol(postA, postB) : null;
+    const liquidityDrop = (isFinite(preVol) && isFinite(postVol) && preVol!==0) ? (postVol/preVol - 1) : null;
+const dd20 = (isFinite(endClose) && isFinite(w20.min) && endClose!==0) ? (w20.min/endClose - 1) : null;
+    const dd60 = (isFinite(endClose) && isFinite(w60.min) && endClose!==0) ? (w60.min/endClose - 1) : null;
+    const ru20 = (isFinite(endClose) && isFinite(w20.max) && endClose!==0) ? (w20.max/endClose - 1) : null;
+    const ru60 = (isFinite(endClose) && isFinite(w60.max) && endClose!==0) ? (w60.max/endClose - 1) : null;
+
+    
+    // Fast-kill style metrics: min drawdown within first 5/10 days after end
+    const minDD = (win)=>{
+      const s3 = endIdx+1;
+      const e3 = Math.min(rows.length-1, endIdx+win);
+      if (s3>e3 || !isFinite(endClose) || endClose===0) return null;
+      let mn = Infinity;
+      for (let i=s3;i<=e3;i++){
+        const c = getClose(i);
+        if (!isFinite(c)) continue;
+        if (c < mn) mn = c;
+      }
+      if (mn===Infinity) return null;
+      return mn/endClose - 1;
+    };
+    const dd5  = minDD(5);
+    const dd10 = minDD(10);
+
+    // Simple behavioral flags (heuristics, can be tuned later)
+    const bulltrapFlag = (isFinite(ru20) && ru20>0.12 && isFinite(peakToTrough60) && peakToTrough60<-0.18) ? 1 : 0;
+    const fastKillFlag = (isFinite(dd10) && dd10<=-0.20) ? 1 : 0;
+    const slowBleedFlag = (isFinite(timeToTrough60) && timeToTrough60>=20 && isFinite(dd60) && dd60<=-0.20) ? 1 : 0;
+
+    // Dead-cat bounce: fast crash (<=-20% within 10d), then bounce (>=+8% within days 11..30), then weaken again after bounce peak
+    const maxIn = (a,b)=>{
+      a=Math.max(0,a); b=Math.min(rows.length-1,b);
+      if (a>b) return {v:null, idx:null};
+      let mx=-Infinity, mi=null;
+      for (let i=a;i<=b;i++){
+        const c=getClose(i);
+        if (!isFinite(c)) continue;
+        if (c>mx){ mx=c; mi=i; }
+      }
+      if (mx===-Infinity) return {v:null, idx:null};
+      return {v:mx, idx:mi};
+    };
+    const minIn = (a,b)=>{
+      a=Math.max(0,a); b=Math.min(rows.length-1,b);
+      if (a>b) return {v:null, idx:null};
+      let mn=Infinity, mi=null;
+      for (let i=a;i<=b;i++){
+        const c=getClose(i);
+        if (!isFinite(c)) continue;
+        if (c<mn){ mn=c; mi=i; }
+      }
+      if (mn===Infinity) return {v:null, idx:null};
+      return {v:mn, idx:mi};
+    };
+
+    const crash10 = (isFinite(dd10) && dd10 <= -0.20);
+    const bounce = maxIn(endIdx+11, endIdx+30); // after initial crash window
+    const bounceOk = (bounce.v!=null && isFinite(endClose) && endClose!==0) ? (bounce.v/endClose - 1 >= 0.08) : false;
+    let weakenAfterBounce = false;
+    if (bounceOk && bounce.idx!=null){
+      const after = minIn(bounce.idx+1, endIdx+60);
+      if (after.v!=null && isFinite(after.v) && isFinite(bounce.v) && bounce.v!==0){
+        weakenAfterBounce = (after.v/bounce.v - 1 <= -0.15);
+      }
+    }
+    const deadCatBounceFlag = (crash10 && bounceOk && weakenAfterBounce) ? 1 : 0;
+
+    // Distribution days ratio (post 20d): high volume but no new high
+    let distCount = 0, distDen = 0;
+    let runningMax = endClose;
+    const end20 = Math.min(rows.length-1, endIdx+20);
+    for (let i=endIdx+1;i<=end20;i++){
+      const c = getClose(i);
+      const vr = Number(rows[i]?.vol_ratio_20);
+      if (!isFinite(c)) continue;
+      distDen += 1;
+      const isNewHigh = (c > runningMax);
+      if (!isNewHigh && isFinite(vr) && vr >= 1.5){
+        distCount += 1;
+      }
+      if (isNewHigh) runningMax = c;
+    }
+    const distRatio = distDen>0 ? (distCount/distDen) : null;
+
+    // Support break speed: first day close < MA20 (bb_ma_20) and first day close <= -10% from end close
+    const firstIdxWhere = (a,b, pred)=>{
+      a=Math.max(0,a); b=Math.min(rows.length-1,b);
+      for (let i=a;i<=b;i++){
+        if (pred(i)) return i;
+      }
+      return null;
+    };
+    const maBreakIdx = firstIdxWhere(endIdx+1, endIdx+60, (i)=>{
+      const c = getClose(i);
+      const ma = Number(rows[i]?.bb_ma_20);
+      return isFinite(c) && isFinite(ma) && c < ma;
+    });
+    const end10Idx = firstIdxWhere(endIdx+1, endIdx+60, (i)=>{
+      const c = getClose(i);
+      return isFinite(c) && isFinite(endClose) && endClose!==0 && c <= endClose*0.90;
+    });
+    const supportBreakMa20 = (maBreakIdx!=null) ? (maBreakIdx - endIdx) : null;
+    const supportBreakEnd10 = (end10Idx!=null) ? (end10Idx - endIdx) : null;
+    let supportBreakMin = null;
+    if (supportBreakMa20!=null && supportBreakEnd10!=null) supportBreakMin = Math.min(supportBreakMa20, supportBreakEnd10);
+    else supportBreakMin = (supportBreakMa20!=null) ? supportBreakMa20 : supportBreakEnd10;
+
+    // Volatility regime shift: compare post 20d vs pre 20d average for BB bandwidth and ATR
+    const meanKey = (a,b,key)=>{
+      a=Math.max(0,a); b=Math.min(rows.length-1,b);
+      if (a>b) return null;
+      let ss=0, cc=0;
+      for (let i=a;i<=b;i++){
+        const v = Number(rows[i]?.[key]);
+        if (isFinite(v)){ ss+=v; cc+=1; }
+      }
+      return cc>0 ? ss/cc : null;
+    };
+    const preA_v = Math.max(0, endIdx-19), preB_v = endIdx;
+    const postA_v = endIdx+1, postB_v = Math.min(rows.length-1, endIdx+20);
+const preBBW = meanKey(preA_v, preB_v, "bb_bw_20");
+    const postBBW = meanKey(postA_v, postB_v, "bb_bw_20");
+    const bbBwShift = (isFinite(preBBW) && isFinite(postBBW) && preBBW!==0) ? (postBBW/preBBW - 1) : null;
+
+    const preATR = meanKey(preA_v, preB_v, "atr_14");
+    const postATR = meanKey(postA_v, postB_v, "atr_14");
+    const atrShift = (isFinite(preATR) && isFinite(postATR) && preATR!==0) ? (postATR/preATR - 1) : null;
+
+    const regimeShiftFlag = ((isFinite(bbBwShift) && bbBwShift>=0.50) || (isFinite(atrShift) && atrShift>=0.50)) ? 1 : 0;
+
+    // Script primary (mutually exclusive) by priority
+    let scriptPrimary = "other";
+    if (fastKillFlag) scriptPrimary = "fast_kill";
+    else if (bulltrapFlag) scriptPrimary = "bulltrap";
+    else if (deadCatBounceFlag) scriptPrimary = "dead_cat_bounce";
+    else if (slowBleedFlag) scriptPrimary = "slow_bleed";
+    else if (regimeShiftFlag) scriptPrimary = "regime_shift";
+events.push({
+      file_name: fileName || "",
+      seq_id: sid,
+      start_date: toStr(start.r["date"]),
+      end_date: toStr(end.r["date"]),
+      streak_len: streakLen,
+      close_on_start: start.r["close_px"],
+      ret_20d_before: before("ret_20d"),
+      bb_bw_20_before: before("bb_bw_20"),
+      vol_ratio_20_before: before("vol_ratio_20"),
+      hv_20_before: before("hv_20_annualized"),
+      drawdown_60d_before: before("drawdown_60d"),
+      post_ret_5d: ret5,
+      post_ret_10d: ret10,
+      post_ret_20d: ret20,
+      post_ret_60d: ret60,
+      post_max_drawdown_20d: dd20,
+      post_max_drawdown_60d: dd60,
+      post_max_runup_20d: ru20,
+      post_max_runup_60d: ru60,
+      post_peak_to_trough_60d: peakToTrough60,
+      time_to_trough_60d: timeToTrough60,
+      time_to_peak_60d: timeToPeak60,
+      time_peak_to_trough_60d: timePeakToTrough60,
+      post_max_drawdown_5d: dd5,
+      post_max_drawdown_10d: dd10,
+      bulltrap_flag: bulltrapFlag,
+      fast_kill_flag: fastKillFlag,
+      slow_bleed_flag: slowBleedFlag,
+      dead_cat_bounce_flag: deadCatBounceFlag,
+      distribution_days_count_20d: distCount,
+      distribution_days_ratio_20d: distRatio,
+      support_break_speed_ma20: supportBreakMa20,
+      support_break_speed_end10: supportBreakEnd10,
+      support_break_speed_min: supportBreakMin,
+      bb_bw_shift_20: bbBwShift,
+      atr_shift_20: atrShift,
+      volatility_regime_shift_flag: regimeShiftFlag,
+      script_primary: scriptPrimary,
+      liquidity_drop: liquidityDrop,
+      _start_idx: startIdx,
+      _end_idx: endIdx
+    });
+  }
+  events.sort((a,b)=> a.start_date.localeCompare(b.start_date));
+  return events;
+}
+function buildSummary(rows, events){
+  const limitDays = rows.reduce((a,r)=>a+(Number(r.limitup_10_flag||0)?1:0),0);
+  const maxStreak = rows.reduce((a,r)=>Math.max(a, Number(r.limitup_streak||0)),0);
+  const ge = (k)=> events.filter(e=>Number(e.streak_len||0)>=k).length;
+  return {
+    bars: rows.length,
+    date_start: rows[0]?.date || "",
+    date_end: rows[rows.length-1]?.date || "",
+    limitup_days_10: limitDays,
+    streak_events: events.length,
+    events_ge_1: ge(1),
+    events_ge_2: ge(2),
+    events_ge_3: ge(3),
+    events_ge_5: ge(5),
+    events_ge_7: ge(7),
+    events_ge_10: ge(10),
+    max_streak: maxStreak,
+  };
+}
+
+/* =========================
+   Filters
+========================= */
+
+// --- Global helpers for ALL-mode (must be in same scope as applyFilters) ---
+function renderKlineAllModeHint(){
+  const el = $("c_kline");
+  if (!el) return;
+  el.innerHTML = `<div class="tiny muted" style="padding:18px; line-height:1.8">
+    当前为 <b>全样本合并</b> 模式：不同股票的 K 线无法直接叠加成一根“合成K线”。<br/>
+    建议查看：<b>概览</b>（连板分布、事件研究）与 <b>连板事件清单</b>（含连板后回撤/收益）。<br/>
+    如需看某只股票的 K 线，请切回 <b>个股（单标的）</b>。
+  </div>`;
+  if (charts["c_kline"]){
+    try{ charts["c_kline"].dispose(); }catch(e){}
+    delete charts["c_kline"];
+  }
+}
+
+function renderFeatureChartsAllMode(){
+  const events = state.filteredEvents || [];
+  const data = events
+    .map(e=>[Number(e.vol_ratio_20_before), Number(e.bb_bw_20_before), Number(e.streak_len||0)])
+    .filter(x=>isFinite(x[0]) && isFinite(x[1]));
+  chart("c_scatter").setOption({
+    color: PALETTE,
+    tooltip:{trigger:"item", formatter:(p)=>`vol_ratio_20_before: ${p.value[0].toFixed(3)}<br/>bb_bw_20_before: ${p.value[1].toFixed(3)}<br/>streak_len: ${p.value[2]}`},
+    grid:{left:55,right:20,top:20,bottom:50},
+    xAxis:{type:"value", name:"vol_ratio_20_before"},
+    yAxis:{type:"value", name:"bb_bw_20_before"},
+    series:[{
+      type:"scatter",
+      data: data,
+      symbolSize: (val)=> Math.min(18, 5 + Number(val[2]||0)),
+    }]
+  }, true);
+
+  const buckets = ["1","2","3","4","5","6","7","8-10","11+"];
+  const bucketOf = (n)=>{
+    n = Number(n||0);
+    if (n>=11) return "11+";
+    if (n>=8) return "8-10";
+    return String(n);
+  };
+  const pts = [];
+  events.forEach(e=>{
+    const b = bucketOf(Number(e.streak_len||0));
+    const y = Number(e.post_max_drawdown_60d);
+    if (isFinite(y)) pts.push([b, y]);
+  });
+  chart("c_vol").setOption({
+    color: PALETTE,
+    tooltip:{trigger:"item"},
+    grid:{left:55,right:20,top:20,bottom:60},
+    xAxis:{type:"category", data:buckets, axisLabel:{rotate:0}},
+    yAxis:{type:"value"},
+    legend:{show:false},
+    series:[
+      {name:"post_max_drawdown_60d", type:"scatter", data:pts, symbolSize:6}
+    ]
+  }, true);
+}
+
+function renderTablesAllMode(){
+  const rows = (state.filteredRows || []).slice(0,80);
+  const head = $("tbl_head");
+  const body = $("tbl_body");
+  head.innerHTML=""; body.innerHTML="";
+  if (!rows.length){
+    head.innerHTML="<th>无数据</th>";
+    body.innerHTML="<tr><td class='muted'>请先读取数据。</td></tr>";
+    return;
+  }
+  const cols = Object.keys(rows[0]);
+  cols.forEach(c=>{
+    const th=document.createElement("th");
+    th.textContent=c;
+    head.appendChild(th);
+  });
+  rows.forEach(r=>{
+    const tr=document.createElement("tr");
+    cols.forEach(c=>{
+      const td=document.createElement("td");
+      td.textContent = toStr(r[c]);
+      tr.appendChild(td);
+    });
+    body.appendChild(tr);
+  });
+}
+// --- End global helpers ---
+
+function applyFilters(){
+  const mode = $("selMode") ? $("selMode").value : "single";
+  const minStreak = Number($("selMinStreak").value||1);
+  const lookback = Number($("selLookback").value||20);
+  const dStart = $("dStart").value;
+  const dEnd = $("dEnd").value;
+
+  if (mode === "all"){
+    // Build a virtual combined pack
+    const allRows = [];
+    const allEvents = [];
+    const allSummary = {bars:0, limitup_days_10:0, streak_events:0, max_streak:0, date_start:"", date_end:""};
+    state.sheetOrder.forEach(name=>{
+      const pack = state.sheets[name];
+      if (!pack) return;
+
+      pack.rows.forEach(r=> allRows.push({file_name:name, ...r}));
+      pack.events.forEach(e=> allEvents.push({file_name:name, ...e}));
+
+      allSummary.bars += (pack.summary.bars||0);
+      allSummary.limitup_days_10 += (pack.summary.limitup_days_10||0);
+      allSummary.streak_events += (pack.summary.streak_events||0);
+      allSummary.max_streak = Math.max(allSummary.max_streak, pack.summary.max_streak||0);
+
+      if (!allSummary.date_start) allSummary.date_start = pack.summary.date_start||"";
+      allSummary.date_end = pack.summary.date_end||allSummary.date_end;
+    });
+
+    // date filters
+    let rows = allRows.slice();
+    if (dStart) rows = rows.filter(r=>toStr(r.date)>=dStart);
+    if (dEnd) rows = rows.filter(r=>toStr(r.date)<=dEnd);
+    state.filteredRows = rows;
+
+    let events = allEvents.slice();
+    if (minStreak) events = events.filter(e=>Number(e.streak_len||0)>=minStreak);
+    if (dStart) events = events.filter(e=>e.start_date>=dStart);
+    if (dEnd) events = events.filter(e=>e.start_date<=dEnd);
+    state.filteredEvents = events;
+
+    state.active = "__ALL__";
+
+    // Update KPIs based on filtered sets
+    $("badgeSheets").textContent = fmtInt(state.sheetOrder.length);
+    $("badgeEvents").textContent = fmtInt(events.length);
+    const limitDays = rows.reduce((a,r)=>a+(Number(r.limitup_10_flag||0)?1:0),0);
+    $("badgeLimitDays").textContent = fmtInt(limitDays);
+
+    $("k_bars").textContent = fmtInt(rows.length);
+    $("k_limit").textContent = fmtInt(limitDays);
+    $("k_events").textContent = fmtInt(events.length);
+    $("k_maxstreak").textContent = fmtInt(allSummary.max_streak||0);
+
+    $("noteField").textContent = `全样本合并：行数 ${fmtInt(rows.length)}，事件 ${fmtInt(events.length)}`;
+
+    // In all-mode, Kline is not meaningful; keep it but show note.
+    renderOverviewCharts(lookback);
+    renderKlineAllModeHint();
+    renderFeatureChartsAllMode();
+    renderTablesAllMode();
+    renderEventTable(); // uses filteredEvents
+    renderSelloffModule();
+    $("exportNote").textContent = `可导出：${fmtInt(state.sheetOrder.length)} 个工作表。`;
+
+    return;
+  }
+
+  // single mode
+  const sheet = $("selSheet").value;
+  const pack = state.sheets[sheet];
+  if (!pack){ return; }
+  state.active = sheet;
+
+  let rows = pack.rows.slice();
+  if (dStart) rows = rows.filter(r=>toStr(r.date)>=dStart);
+  if (dEnd) rows = rows.filter(r=>toStr(r.date)<=dEnd);
+  state.filteredRows = rows;
+
+  let events = pack.events.filter(e=>Number(e.streak_len||0)>=minStreak);
+  if (dStart) events = events.filter(e=>e.start_date>=dStart);
+  if (dEnd) events = events.filter(e=>e.start_date<=dEnd);
+  state.filteredEvents = events;
+
+  $("badgeSheets").textContent = fmtInt(state.sheetOrder.length);
+  $("badgeEvents").textContent = fmtInt(events.length);
+  const limitDays = rows.reduce((a,r)=>a+(Number(r.limitup_10_flag||0)?1:0),0);
+  $("badgeLimitDays").textContent = fmtInt(limitDays);
+
+  $("k_bars").textContent = fmtInt(rows.length);
+  $("k_limit").textContent = fmtInt(limitDays);
+  $("k_events").textContent = fmtInt(events.length);
+  $("k_maxstreak").textContent = fmtInt(pack.summary.max_streak||0);
+
+  $("noteField").textContent = `字段数：${Object.keys(rows[0]||{}).length}（含特征）`;
+
+  renderOverviewCharts(lookback);
+  renderKline();
+  renderFeatureCharts();
+  renderTables();
+  renderEventTable();
+  renderSelloffModule();
+  $("exportNote").textContent = `可导出：${fmtInt(state.sheetOrder.length)} 个工作表。`;
+}
+
+/* =========================
+   Charts
+========================= */
+let charts = {};
+function chart(id){
+  if (!charts[id]){
+    charts[id] = echarts.init($(id));
+  }
+  return charts[id];
+}
+window.addEventListener("resize", ()=>{
+  Object.values(charts).forEach(c=>{ try{c.resize()}catch(e){} });
+});
+
+function renderOverviewCharts(lookback){
+  const events = state.filteredEvents;
+  // streak distribution
+  const buckets = ["1","2","3","4","5","6","7","8-10","11+"];
+  const cnt = new Map(buckets.map(b=>[b,0]));
+  events.forEach(e=>{
+    const n = Number(e.streak_len||0);
+    let b="1";
+    if (n>=11) b="11+";
+    else if (n>=8) b="8-10";
+    else b=String(n);
+    cnt.set(b, (cnt.get(b)||0)+1);
+  });
+  chart("c_streakDist").setOption({
+    color: PALETTE,
+    tooltip:{trigger:"axis",axisPointer:{type:"shadow"}},
+    grid:{left:55,right:20,top:20,bottom:40},
+    xAxis:{type:"category",data:buckets},
+    yAxis:{type:"value"},
+    series:[{type:"bar", data:buckets.map(b=>cnt.get(b)||0), barMaxWidth:26}]
+  }, true);
+
+  // event timeline (start_date vs streak_len)
+  chart("c_eventTimeline").setOption({
+    color: PALETTE,
+    tooltip:{trigger:"item"},
+    grid:{left:55,right:20,top:20,bottom:60},
+    xAxis:{type:"category", data: events.map(e=>e.start_date), axisLabel:{rotate:30}},
+    yAxis:{type:"value"},
+    series:[{
+      type:"scatter",
+      data: events.map(e=>[e.start_date, e.streak_len]),
+      symbolSize: (val)=> Math.min(18, 6 + Number(val[1]||0)),
+    }]
+  }, true);
+
+  // Pre-event mean comparison (example set)
+  // Compute, for each event, mean of selected features in [start-lookback, start-1]
+  const modeNow = $("selMode") ? $("selMode").value : "single";
+
+  const feats = [
+    ["ret_20d","ret_20d"],
+    ["hv_20_annualized","hv_20_annualized"],
+    ["bb_bw_20","bb_bw_20"],
+    ["vol_ratio_20","vol_ratio_20"],
+    ["drawdown_60d","drawdown_60d"],
+    ["excess_ret_60d_vs_000300","excess_ret_60d_vs_000300"],
+  ];
+
+  const sums = new Map(feats.map(f=>[f[0], {s:0,c:0}]));
+
+  function addWindowMean(rows, i0){
+    if (!rows || i0==null) return;
+    const s0 = Math.max(0, i0 - lookback);
+    const e0 = Math.max(0, i0 - 1);
+    if (s0>e0) return;
+    for (const [k, label] of feats){
+      let ss=0, cc=0;
+      for (let i=s0;i<=e0;i++){
+        const v = Number(rows[i]?.[k]);
+        if (isFinite(v)){ ss += v; cc += 1; }
+      }
+      if (cc>0){
+        const it = sums.get(k);
+        it.s += ss/cc;
+        it.c += 1;
+      }
+    }
+  }
+
+  if (modeNow === "single"){
+    const sheet = state.active;
+    const pack = state.sheets[sheet];
+    if (pack && pack.rows){
+      const rowsAll = pack.rows;
+      const idxByDate = new Map(rowsAll.map((r,i)=>[toStr(r.date), i]));
+      events.forEach(ev=>{
+        const i0 = idxByDate.get(ev.start_date);
+        if (i0==null) return;
+        addWindowMean(rowsAll, i0);
+      });
+    }
+  } else {
+    // all-sample mode: use per-event _start_idx + per-file rows
+    events.forEach(ev=>{
+      const fn = ev.file_name || "";
+      const pack = state.sheets[fn];
+      if (!pack || !pack.rows) return;
+      const i0 = ev._start_idx;
+      addWindowMean(pack.rows, i0);
+    });
+  }
+
+  const x = feats.map(f=>f[0]);
+  const y = x.map(k=>{
+    const it=sums.get(k);
+    return (it && it.c>0) ? (it.s/it.c) : NaN;
+  });
+
+  chart("c_preEventMean").setOption({
+    color: PALETTE,
+    tooltip:{trigger:"axis",axisPointer:{type:"shadow"}},
+    grid:{left:200,right:20,top:20,bottom:40},
+    xAxis:{type:"value"},
+    yAxis:{type:"category", data:x, axisLabel:{width:190, overflow:"truncate"}},
+    series:[{type:"bar", data:y, barMaxWidth:18}]
+  }, true);
+  // Post-event drawdown distribution (future 60d)
+  const dd = events.map(e=>Number(e.post_max_drawdown_60d)).filter(v=>isFinite(v));
+  chart("c_postDrawdown").setOption({
+    color: PALETTE,
+    tooltip:{trigger:"axis", axisPointer:{type:"shadow"}},
+    grid:{left:55,right:20,top:20,bottom:50},
+    xAxis:{type:"value", name:"post_max_drawdown_60d"},
+    yAxis:{type:"category", data:["all"], axisLabel:{show:false}},
+    series:[{
+      type:"bar",
+      data:[ dd.length ? (dd.reduce((a,b)=>a+b,0)/dd.length) : NaN ],
+      barMaxWidth: 18
+    },{
+      type:"scatter",
+      data: dd.map(v=>[v,0]),
+      symbolSize: 6
+    }]
+  }, true);
+
+  // Event study: normalized path around start (t=-20..+60), average + p25/p75
+  const sheet = state.active;
+  const mode = $("selMode") ? $("selMode").value : "single";
+  const allRows = (mode==="all")
+    ? state.filteredRows
+    : (state.sheets[sheet]?.rows || []);
+  // Build a map: file_name+date -> index for fast lookup (only for single-mode we use original indices)
+  // In all-mode, we approximate by using embedded _start_idx/_end_idx within each event per sheet.
+  const W_PRE = 20, W_POST = 60;
+  const len = W_PRE + 1 + W_POST;
+
+  const paths = [];
+  if (mode==="single"){
+    const pack = state.sheets[sheet];
+    if (pack){
+      const rows0 = pack.rows;
+      pack.events.forEach(ev=>{
+        const i0 = ev._start_idx;
+        if (i0==null) return;
+        const base = Number(rows0[i0]?.close_px);
+        if (!isFinite(base) || base===0) return;
+        const arr = [];
+        for (let k=-W_PRE;k<=W_POST;k++){
+          const i = i0 + k;
+          const v = (i>=0 && i<rows0.length) ? Number(rows0[i]?.close_px) : NaN;
+          arr.push(isFinite(v) ? (v/base - 1) : NaN);
+        }
+        paths.push(arr);
+      });
+    }
+  } else {
+    // all-mode: loop each sheet, use events with indices
+    state.sheetOrder.forEach(name=>{
+      const pack = state.sheets[name];
+      if (!pack) return;
+      pack.events.forEach(ev=>{
+        if (Number(ev.streak_len||0) < Number($("selMinStreak").value||1)) return;
+        const i0 = ev._start_idx;
+        if (i0==null) return;
+        const base = Number(pack.rows[i0]?.close_px);
+        if (!isFinite(base) || base===0) return;
+        const arr = [];
+        for (let k=-W_PRE;k<=W_POST;k++){
+          const i = i0 + k;
+          const v = (i>=0 && i<pack.rows.length) ? Number(pack.rows[i]?.close_px) : NaN;
+          arr.push(isFinite(v) ? (v/base - 1) : NaN);
+        }
+        paths.push(arr);
+      });
+    });
+  }
+
+  const xs = [];
+  for (let k=-W_PRE;k<=W_POST;k++) xs.push(k);
+
+  function quantile(values, q){
+    const v = values.filter(x=>isFinite(x)).sort((a,b)=>a-b);
+    if (!v.length) return NaN;
+    const pos = (v.length-1)*q;
+    const base = Math.floor(pos);
+    const rest = pos-base;
+    if (v[base+1]!==undefined) return v[base] + rest*(v[base+1]-v[base]);
+    return v[base];
+  }
+
+  const mean = new Array(len).fill(NaN);
+  const p25  = new Array(len).fill(NaN);
+  const p75  = new Array(len).fill(NaN);
+
+  for (let i=0;i<len;i++){
+    const col = paths.map(a=>a[i]).filter(v=>isFinite(v));
+    if (!col.length) continue;
+    mean[i] = col.reduce((a,b)=>a+b,0)/col.length;
+    p25[i]  = quantile(col, 0.25);
+    p75[i]  = quantile(col, 0.75);
+  }
+
+  chart("c_eventStudy").setOption({
+    color: PALETTE,
+    tooltip:{trigger:"axis"},
+    grid:{left:55,right:20,top:20,bottom:50},
+    xAxis:{type:"category", data: xs.map(String), name:"t (bars)"},
+    yAxis:{type:"value", name:"normalized return"},
+    legend:{bottom:0},
+    series:[
+      {name:"p25", type:"line", data:p25, showSymbol:false},
+      {name:"mean", type:"line", data:mean, showSymbol:false},
+      {name:"p75", type:"line", data:p75, showSymbol:false},
+    ]
+  }, true);
+
+}
+
+function renderKline(){
+  const el = $("c_kline");
+  if (el) el.innerHTML = "";
+  const rows = state.filteredRows;
+  if (!rows.length) return;
+
+  const dates = rows.map(r=>toStr(r.date));
+  const kdata = rows.map(r=>[Number(r.open_px), Number(r.close_px), Number(r.low_px), Number(r.high_px)]);
+  const vdata = rows.map(r=>Number(r.volume));
+  const limitIdx = rows.map((r,i)=> Number(r.limitup_10_flag||0)===1 ? i : -1).filter(i=>i>=0);
+
+  // Zoom presets
+  let start = 0;
+  if (state.zoomMode==="2y") start = Math.max(0, rows.length - 500);
+  if (state.zoomMode==="1y") start = Math.max(0, rows.length - 260);
+
+  // markpoints for limit-up days
+  const marks = limitIdx.map(i=>({
+    name:"LimitUp",
+    coord:[dates[i], kdata[i][1]],
+    value:"↑",
+    symbolSize: 10
+  }));
+
+  chart("c_kline").setOption({
+    color: PALETTE,
+    tooltip:{trigger:"axis", axisPointer:{type:"cross"}},
+    grid:[
+      {left:55,right:20,top:20,height:320},
+      {left:55,right:20,top:365,height:120},
+    ],
+    xAxis:[
+      {type:"category", data:dates, gridIndex:0, boundaryGap:false, axisLabel:{show:false}},
+      {type:"category", data:dates, gridIndex:1, boundaryGap:false, axisLabel:{rotate:30}},
+    ],
+    yAxis:[
+      {type:"value", scale:true, gridIndex:0},
+      {type:"value", gridIndex:1},
+    ],
+    dataZoom:[
+      {type:"inside", xAxisIndex:[0,1], start: start/rows.length*100, end:100},
+      {type:"slider", xAxisIndex:[0,1], bottom:5, start: start/rows.length*100, end:100}
+    ],
+    series:[
+      {
+        name:"K",
+        type:"candlestick",
+        xAxisIndex:0, yAxisIndex:0,
+        data:kdata,
+        markPoint:{data:marks}
+      },
+      {
+        name:"Volume",
+        type:"bar",
+        xAxisIndex:1, yAxisIndex:1,
+        data:vdata,
+        barMaxWidth: 10
+      }
+    ]
+  }, true);
+}
+
+function renderFeatureCharts(){
+  const rows = state.filteredRows;
+  if (!rows.length) return;
+
+  const scatter = rows
+    .map(r=>[Number(r.vol_ratio_20), Number(r.ret_1d), Number(r.limitup_10_flag||0)])
+    .filter(x=>isFinite(x[0]) && isFinite(x[1]));
+
+  chart("c_scatter").setOption({
+    color: PALETTE,
+    tooltip:{trigger:"item"},
+    grid:{left:55,right:20,top:20,bottom:50},
+    xAxis:{type:"value", name:"vol_ratio_20"},
+    yAxis:{type:"value", name:"ret_1d"},
+    series:[{
+      type:"scatter",
+      data: scatter.map(x=>[x[0], x[1]]),
+      symbolSize: (val)=> 6,
+    }]
+  }, true);
+
+  const dates = rows.map(r=>toStr(r.date));
+  const hv = rows.map(r=>Number(r.hv_20_annualized));
+  const bbw= rows.map(r=>Number(r.bb_bw_20)).map(v=> isFinite(v)?v:NaN);
+
+  chart("c_vol").setOption({
+    color: PALETTE,
+    tooltip:{trigger:"axis"},
+    grid:{left:55,right:20,top:20,bottom:60},
+    xAxis:{type:"category", data:dates, axisLabel:{rotate:30}},
+    yAxis:{type:"value"},
+    legend:{bottom:0},
+    series:[
+      {name:"hv_20_annualized", type:"line", data:hv, showSymbol:false},
+      {name:"bb_bw_20", type:"line", data:bbw, showSymbol:false},
+    ]
+  }, true);
+}
+
+/* =========================
+   Tables
+========================= */
+function renderTables(){
+  const rows = state.filteredRows.slice(0,80);
+  const head = $("tbl_head");
+  const body = $("tbl_body");
+  head.innerHTML=""; body.innerHTML="";
+  if (!rows.length){
+    head.innerHTML="<th>无数据</th>";
+    body.innerHTML="<tr><td class='muted'>请先读取数据。</td></tr>";
+    return;
+  }
+  const cols = Object.keys(rows[0]);
+  cols.forEach(c=>{
+    const th=document.createElement("th");
+    th.textContent=c;
+    head.appendChild(th);
+  });
+  rows.forEach(r=>{
+    const tr=document.createElement("tr");
+    cols.forEach(c=>{
+      const td=document.createElement("td");
+      td.textContent = toStr(r[c]);
+      tr.appendChild(td);
+    });
+    body.appendChild(tr);
+  });
+}
+
+function renderEventTable(){
+  const rows = state.filteredEvents.slice(0,120);
+  const head = $("evt_head");
+  const body = $("evt_body");
+  head.innerHTML=""; body.innerHTML="";
+  const cols = ["file_name","seq_id","start_date","end_date","streak_len","close_on_start","ret_20d_before","bb_bw_20_before","vol_ratio_20_before","hv_20_before","drawdown_60d_before","post_ret_5d","post_ret_10d","post_ret_20d","post_ret_60d","post_max_drawdown_20d","post_max_drawdown_60d","post_max_runup_20d","post_max_runup_60d","post_peak_to_trough_60d","time_to_trough_60d","time_to_peak_60d","time_peak_to_trough_60d","post_max_drawdown_10d","post_max_drawdown_5d","bulltrap_flag","fast_kill_flag","slow_bleed_flag","dead_cat_bounce_flag","distribution_days_ratio_20d","distribution_days_count_20d","support_break_speed_ma20","support_break_speed_end10","support_break_speed_min","bb_bw_shift_20","atr_shift_20","volatility_regime_shift_flag","script_primary","liquidity_drop"];
+  cols.forEach(c=>{
+    const th=document.createElement("th"); th.textContent=c; head.appendChild(th);
+  });
+  if (!rows.length){
+    body.innerHTML = `<tr><td class="muted" colspan="${cols.length}" style="padding:14px">当前筛选下无连板事件。</td></tr>`;
+    return;
+  }
+  rows.forEach(r=>{
+    const tr=document.createElement("tr");
+    cols.forEach(c=>{
+      const td=document.createElement("td");
+      td.textContent = toStr(r[c]);
+      tr.appendChild(td);
+    });
+    body.appendChild(tr);
+  });
+}
+
+/* =========================
+   Export helpers
+========================= */
+function downloadCSV(filename, cols, rows){
+  const BOM = "\ufeff";
+  const esc = (x)=>{
+    const s = toStr(x);
+    if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g,'""')}"`;
+    return s;
+  };
+  const lines = [];
+  lines.push(cols.map(esc).join(","));
+  rows.forEach(r=>{
+    lines.push(cols.map(c=>esc(r[c])).join(","));
+  });
+  const blob = new Blob([BOM + lines.join("\n")], {type:"text/csv;charset=utf-8;"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href=url; a.download=filename;
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 500);
+}
+
+/* =========================
+   Navigation
+========================= */
+function showPanel(name){
+  const map = {overview:"p_overview", price:"p_price", features:"p_features", events:"p_events", selloff:"p_selloff", export:"p_export"};
+  Object.values(map).forEach(id=>$(id).classList.remove("show"));
+  $(map[name]).classList.add("show");
+  document.querySelectorAll(".navbtn[data-nav]").forEach(b=>{
+    b.classList.toggle("active", b.getAttribute("data-nav")===name);
+  });
+  setTimeout(()=>{ Object.values(charts).forEach(c=>{ try{c.resize()}catch(e){} }); }, 120);
+}
+document.addEventListener("click",(e)=>{
+  const btn = e.target.closest && e.target.closest(".navbtn[data-nav]");
+  if (!btn) return;
+  showPanel(btn.getAttribute("data-nav"));
+});
+
+/* =========================
+   Read XLSX (features.xlsx)
+========================= */
+async function readXlsxFile(file){
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, {type:"array"});
+  const sheetNames = wb.SheetNames || [];
+  const packs = {};
+  sheetNames.forEach(name=>{
+    const ws = wb.Sheets[name];
+    const aoa = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:""});
+    if (!aoa.length) return;
+    const header = aoa[0].map(h=>normalizeHeader(h));
+    const rows = [];
+    for (let i=1;i<aoa.length;i++){
+      const row = aoa[i] || [];
+      const obj = {};
+      for (let j=0;j<header.length;j++){
+        obj[header[j] || `COL_${j+1}`] = row[j];
+      }
+      const has = Object.values(obj).some(v=>toStr(v)!=="");
+      if (has) rows.push(obj);
+    }
+    packs[name]=rows;
+  });
+  return packs;
+}
+
+/* =========================
+   Main parse flow
+========================= */
+function rebuildSelector(){
+  const sel = $("selSheet");
+  sel.innerHTML = "";
+  state.sheetOrder.forEach(n=>{
+    const opt=document.createElement("option");
+    opt.value=n; opt.textContent=n;
+    sel.appendChild(opt);
+  });
+  if (state.sheetOrder.length){
+    sel.value = state.sheetOrder[0];
+  }
+  if ($("selMode")) {
+    sel.disabled = ($("selMode").value==="all");
+  }
+}
+function buildPackFromRows(sheetName, rows){
+  // If user uploaded features.xlsx -> rows already include features; if CSV -> compute features first.
+  const hasFeature = rows.length && (rows[0]["limitup_10_flag"]!=null || rows[0]["limitup_streak"]!=null);
+  const rr = hasFeature ? rows : computeRowsWithFeatures(rows);
+  const events = buildEvents(rr, sheetName);
+  const summary = buildSummary(rr, events);
+  return {rows: rr, events, summary};
+}
+
+$("btnParse").onclick = async ()=>{
+  try{
+    setStatus("开始读取/计算…","warn");
+    setProgress(5,"准备…");
+
+    state.sheets = {};
+    state.sheetOrder = [];
+    state.active = null;
+    state.filteredRows = [];
+    state.filteredEvents = [];
+
+    const csvFiles = Array.from($("upCsv").files||[]);
+    const xlsxFile = ($("upXlsx").files||[])[0];
+
+    // Priority: if xlsx provided, read xlsx; else read csvs
+    if (xlsxFile){
+      setProgress(15,"读取 XLSX…");
+      const packs = await readXlsxFile(xlsxFile);
+      // use sheets except events/summary if present
+      const names = Object.keys(packs).filter(n=>!["events","summary"].includes(n.toLowerCase()));
+      if (!names.length) throw new Error("XLSX 中未发现数据工作表（至少 1 个）。");
+      let done=0;
+      for (const name of names){
+        done += 1;
+        setProgress(15 + Math.round(done/names.length*60), `构建工作表：${name}`);
+        const pack = buildPackFromRows(name, packs[name]);
+        state.sheets[name]=pack;
+        state.sheetOrder.push(name);
+      }
+    } else {
+      if (!csvFiles.length) throw new Error("请先上传 CSV（或上传 features.xlsx）。");
+      setProgress(15, "读取 CSV（多文件）…");
+      let done=0;
+      for (const f of csvFiles){
+        const text = await f.text();
+        const parsed = parseCSV(text);
+        const rows0 = parsed.rows;
+        const name = safeSheetName(f.name.replace(/\.csv$/i,""));
+        done += 1;
+        setProgress(15 + Math.round(done/csvFiles.length*70), `计算特征：${name}`);
+        const pack = buildPackFromRows(name, rows0);
+        state.sheets[name]=pack;
+        state.sheetOrder.push(name);
+      }
+    }
+
+    setProgress(92,"初始化筛选与渲染…");
+    rebuildSelector();
+
+    // init date range from first sheet
+    const first = state.sheets[state.sheetOrder[0]];
+    if (first && first.rows.length){
+      $("dStart").value = first.rows[0].date || "";
+      $("dEnd").value = first.rows[first.rows.length-1].date || "";
+    }
+
+    setProgress(100,"完成");
+    setStatus(`完成：已载入 ${fmtInt(state.sheetOrder.length)} 个工作表。`, "ok");
+
+    applyFilters();
+  } catch(e){
+    console.error(e);
+    setStatus("失败：" + (e?.message||e), "err");
+    setProgress(0,"");
+  }
+};
+
+$("btnReset").onclick = ()=>{
+  state.sheets={}; state.sheetOrder=[]; state.active=null;
+  state.filteredRows=[]; state.filteredEvents=[];
+  $("selSheet").innerHTML="";
+  $("tbl_head").innerHTML=""; $("tbl_body").innerHTML="";
+  $("evt_head").innerHTML=""; $("evt_body").innerHTML="";
+  setStatus("已清空页面数据。","ok");
+  setProgress(0,"");
+};
+
+$("btnApply").onclick = applyFilters;
+
+$("selMode").onchange = ()=>{
+  const mode = $("selMode").value;
+  $("selSheet").disabled = (mode==="all");
+  applyFilters();
+};
+
+$("btnZoomAll").onclick = ()=>{ state.zoomMode="all"; renderKline(); };
+$("btnZoom2Y").onclick = ()=>{ state.zoomMode="2y"; renderKline(); };
+$("btnZoom1Y").onclick = ()=>{ state.zoomMode="1y"; renderKline(); };
+
+// export current sheet CSV
+$("btnExportSheetCsv").onclick = ()=>{
+  const sheet = state.active;
+  if (!sheet) return;
+  const rows = state.filteredRows;
+  if (!rows.length) return;
+  const cols = Object.keys(rows[0]);
+  downloadCSV(`${sheet}_features.csv`, cols, rows);
+};
+$("btnExportEventsCsv").onclick = ()=>{
+  const sheet = state.active;
+  if (!sheet) return;
+  const rows = state.filteredEvents;
+  if (!rows.length) return;
+  const cols = Object.keys(rows[0]);
+  downloadCSV(`${sheet}_events.csv`, cols, rows);
+};
+
+// export merged XLSX
+$("btnExportXlsx").onclick = ()=>{
+  if (!state.sheetOrder.length){
+    $("exportNote").textContent = "没有可导出的工作表。";
+    return;
+  }
+  const wb = XLSX.utils.book_new();
+  state.sheetOrder.forEach(name=>{
+    const rows = state.sheets[name].rows;
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, safeSheetName(name));
+  });
+  // add events & summary (merged across sheets)
+  const allEvents = [];
+  const allSummary = [];
+  state.sheetOrder.forEach(name=>{
+    state.sheets[name].events.forEach(e=> allEvents.push({file_name:name, ...e}));
+    allSummary.push({file_name:name, ...state.sheets[name].summary});
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(allEvents), "events");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(allSummary), "summary");
+
+  XLSX.writeFile(wb, "limitup_features_merged.xlsx");
+  $("exportNote").textContent = "已触发下载（浏览器保存）。";
+};
+
+
+function bucketOfStreak(n){
+  n = Number(n||0);
+  if (n>=11) return "11+";
+  if (n>=8) return "8-10";
+  return String(n);
+}
+function quantileSorted(sorted, q){
+  if (!sorted.length) return NaN;
+  const pos = (sorted.length-1)*q;
+  const base = Math.floor(pos);
+  const rest = pos-base;
+  if (sorted[base+1]!==undefined) return sorted[base] + rest*(sorted[base+1]-sorted[base]);
+  return sorted[base];
+}
+function boxStats(values){
+  const v = values.filter(x=>isFinite(x)).slice().sort((a,b)=>a-b);
+  if (!v.length) return null;
+  const min=v[0], max=v[v.length-1];
+  const q1=quantileSorted(v,0.25);
+  const med=quantileSorted(v,0.5);
+  const q3=quantileSorted(v,0.75);
+  return [min,q1,med,q3,max];
+}
+function spearman(xs, ys){
+  // rank transform then Pearson
+  const pairs = xs.map((x,i)=>({x,y:ys[i]})).filter(p=>isFinite(p.x)&&isFinite(p.y));
+  if (pairs.length < 10) return NaN;
+
+  const rank = (arr)=>{
+    // average rank for ties
+    const sorted = arr.map((v,i)=>({v,i})).sort((a,b)=>a.v-b.v);
+    const r = new Array(arr.length).fill(NaN);
+    let i=0;
+    while (i<sorted.length){
+      let j=i;
+      while (j<sorted.length && sorted[j].v===sorted[i].v) j++;
+      const avg = (i+1 + j)/2;
+      for (let k=i;k<j;k++) r[sorted[k].i]=avg;
+      i=j;
+    }
+    return r;
+  };
+
+  const xarr = pairs.map(p=>p.x);
+  const yarr = pairs.map(p=>p.y);
+  const rx = rank(xarr);
+  const ry = rank(yarr);
+
+  const n = rx.length;
+  const mx = rx.reduce((a,b)=>a+b,0)/n;
+  const my = ry.reduce((a,b)=>a+b,0)/n;
+  let num=0, dx=0, dy=0;
+  for (let i=0;i<n;i++){
+    const ax = rx[i]-mx;
+    const ay = ry[i]-my;
+    num += ax*ay;
+    dx += ax*ax;
+    dy += ay*ay;
+  }
+  if (dx===0 || dy===0) return NaN;
+  return num / Math.sqrt(dx*dy);
+}
+
+function renderSelloffModule(){
+  const events = state.filteredEvents || [];
+  const buckets = ["1","2","3","4","5","6","7","8-10","11+"];
+
+  // Boxplot 1: post_max_drawdown_60d
+  const boxDD = [];
+  const outDD = [];
+  buckets.forEach((b,bi)=>{
+    const vals = events.filter(e=>bucketOfStreak(e.streak_len)===b).map(e=>Number(e.post_max_drawdown_60d));
+    const st = boxStats(vals);
+    boxDD.push(st || [NaN,NaN,NaN,NaN,NaN]);
+    // outliers
+    vals.filter(v=>isFinite(v)).forEach(v=> outDD.push([bi, v]));
+  });
+  chart("c_box_dd60").setOption({
+    color: PALETTE,
+    tooltip:{trigger:"item"},
+    grid:{left:55,right:20,top:20,bottom:50},
+    xAxis:{type:"category", data:buckets},
+    yAxis:{type:"value"},
+    series:[
+      {type:"boxplot", data:boxDD},
+      {type:"scatter", data:outDD, symbolSize:4, tooltip:{formatter:(p)=>`bucket: ${buckets[p.value[0]]}<br/>dd60: ${p.value[1]}`}}
+    ]
+  }, true);
+
+  // Boxplot 2: post_peak_to_trough_60d
+  const boxP2T = [];
+  const outP2T = [];
+  buckets.forEach((b,bi)=>{
+    const vals = events.filter(e=>bucketOfStreak(e.streak_len)===b).map(e=>Number(e.post_peak_to_trough_60d));
+    const st = boxStats(vals);
+    boxP2T.push(st || [NaN,NaN,NaN,NaN,NaN]);
+    vals.filter(v=>isFinite(v)).forEach(v=> outP2T.push([bi, v]));
+  });
+  chart("c_box_peak2trough").setOption({
+    color: PALETTE,
+    tooltip:{trigger:"item"},
+    grid:{left:55,right:20,top:20,bottom:50},
+    xAxis:{type:"category", data:buckets},
+    yAxis:{type:"value"},
+    series:[
+      {type:"boxplot", data:boxP2T},
+      {type:"scatter", data:outP2T, symbolSize:4, tooltip:{formatter:(p)=>`bucket: ${buckets[p.value[0]]}<br/>p2t60: ${p.value[1]}`}}
+    ]
+  }, true);
+
+  // Bull-trap scatter: runup vs peak->trough, size by streak, color by time_to_trough_60d or liquidity_drop
+  const pts = events.map(e=>{
+    const x = Number(e.post_max_runup_20d);
+    const y = Number(e.post_peak_to_trough_60d);
+    const s = Number(e.streak_len||0);
+    const t = Number(e.time_to_trough_60d);
+    const l = Number(e.liquidity_drop);
+    return {x,y,s,t,l, name:e.file_name||"", start:e.start_date||""};
+  }).filter(p=>isFinite(p.x)&&isFinite(p.y));
+  chart("c_bulltrap").setOption({
+    color: PALETTE,
+    tooltip:{trigger:"item", formatter:(p)=>{
+      const v=p.value;
+      return `runup_20d: ${v[0].toFixed(3)}<br/>peak_to_trough_60d: ${v[1].toFixed(3)}<br/>streak_len: ${v[2]}<br/>time_to_trough_60d: ${v[3]}<br/>liquidity_drop: ${v[4].toFixed(3)}<br/>file: ${v[5]}<br/>start: ${v[6]}`;
+    }},
+    grid:{left:55,right:20,top:20,bottom:60},
+    xAxis:{type:"value", name:"post_max_runup_20d"},
+    yAxis:{type:"value", name:"post_peak_to_trough_60d"},
+    series:[{
+      type:"scatter",
+      data: pts.map(p=>[p.x,p.y,p.s,p.t,isFinite(p.l)?p.l:0,p.name,p.start]),
+      symbolSize:(val)=> Math.min(20, 6 + Number(val[2]||0)),
+    }]
+  }, true);
+
+  // Feature ranking (Spearman) using pre-event lookback mean
+  const targetKey = $("selRankTarget") ? $("selRankTarget").value : "post_max_drawdown_60d";
+  const lookback = Number($("selLookback").value||20);
+  const minStreak = Number($("selMinStreak").value||1);
+  const mode = $("selMode") ? $("selMode").value : "single";
+
+  const featureKeys = [
+    "ret_1d","ret_5d","ret_10d","ret_20d","ret_60d",
+    "hv_20_annualized","bb_bw_20","atr_14",
+    "vol_ratio_20","vol_z_20","vol_pct_rank_60","vol_spike_ratio_20d",
+    "candle_body_pct","candle_upper_shadow_pct","candle_lower_shadow_pct",
+    "gap_open_vs_prevclose","drawdown_60d","excess_ret_60d_vs_000300"
+  ];
+
+  // Build per-event vectors
+  const X = {}; featureKeys.forEach(k=>X[k]=[]);
+  const Y = [];
+
+  function meanFeature(packRows, startIdx, key){
+    const s = Math.max(0, startIdx - lookback);
+    const e = Math.max(0, startIdx - 1);
+    if (s>e) return NaN;
+    let ss=0, cc=0;
+    for (let i=s;i<=e;i++){
+      const v = Number(packRows[i]?.[key]);
+      if (isFinite(v)){ ss+=v; cc+=1; }
+    }
+    return cc>0 ? ss/cc : NaN;
+  }
+
+  if (mode==="single"){
+    const sheet = $("selSheet").value;
+    const pack = state.sheets[sheet];
+    if (pack){
+      pack.events.filter(ev=>Number(ev.streak_len||0)>=minStreak).forEach(ev=>{
+        const startIdx = ev._start_idx;
+        if (startIdx==null) return;
+        const y = Number(ev[targetKey]);
+        if (!isFinite(y)) return;
+        Y.push(y);
+        featureKeys.forEach(k=> X[k].push(meanFeature(pack.rows, startIdx, k)));
+      });
+    }
+  } else {
+    state.sheetOrder.forEach(name=>{
+      const pack = state.sheets[name];
+      if (!pack) return;
+      pack.events.filter(ev=>Number(ev.streak_len||0)>=minStreak).forEach(ev=>{
+        const startIdx = ev._start_idx;
+        if (startIdx==null) return;
+        const y = Number(ev[targetKey]);
+        if (!isFinite(y)) return;
+        Y.push(y);
+        featureKeys.forEach(k=> X[k].push(meanFeature(pack.rows, startIdx, k)));
+      });
+    });
+  }
+
+  const ranks = featureKeys.map(k=>{
+    const rho = spearman(X[k], Y);
+    return {k, rho: isFinite(rho)?rho:0};
+  }).sort((a,b)=>Math.abs(b.rho)-Math.abs(a.rho)).slice(0,12);
+
+  chart("c_rank").setOption({
+    color: PALETTE,
+    tooltip:{trigger:"axis", axisPointer:{type:"shadow"}, formatter:(ps)=>{
+      const p=ps[0];
+      return `${p.name}<br/>Spearman rho: ${Number(p.value).toFixed(4)}`;
+    }},
+    grid:{left:220,right:20,top:20,bottom:40},
+    xAxis:{type:"value"},
+    yAxis:{type:"category", data:ranks.map(r=>r.k), axisLabel:{width:210, overflow:"truncate"}},
+    series:[{type:"bar", data:ranks.map(r=>r.rho), barMaxWidth:18}]
+  }, true);
+  // Kill-speed probability bars (threshold + horizon)
+  const th = Number($("inpKillTh") ? $("inpKillTh").value : -0.20);
+  const H = Number($("selKillH") ? $("selKillH").value : 10);
+  const keyDD = (H===5) ? "post_max_drawdown_5d" : (H===10 ? "post_max_drawdown_10d" : "post_max_drawdown_20d");
+
+  const buckets2 = ["1","2","3","4","5","6","7","8-10","11+"];
+  const prob = [];
+  const cnts = [];
+  buckets2.forEach(b=>{
+    const evs = events.filter(e=>bucketOfStreak(e.streak_len)===b);
+    const denom = evs.length;
+    const num = evs.filter(e=>isFinite(Number(e[keyDD])) && Number(e[keyDD])<=th).length;
+    prob.push(denom? (num/denom) : 0);
+    cnts.push([num,denom]);
+  });
+  const allDen = events.length;
+  const allNum = events.filter(e=>isFinite(Number(e[keyDD])) && Number(e[keyDD])<=th).length;
+  const allProb = allDen? allNum/allDen : 0;
+
+  chart("c_killspeed_prob").setOption({
+    color: PALETTE,
+    tooltip:{trigger:"axis", axisPointer:{type:"shadow"}, formatter:(ps)=>{
+      const p = ps[0];
+      const i = p.dataIndex;
+      const c = cnts[i] || [0,0];
+      return `${p.name}<br/>P(dd<=${th} within ${H}d): ${(p.value*100).toFixed(1)}%<br/>count: ${c[0]}/${c[1]}<br/>all: ${(allProb*100).toFixed(1)}% (${allNum}/${allDen})`;
+    }},
+    grid:{left:55,right:20,top:20,bottom:50},
+    xAxis:{type:"category", data:buckets2},
+    yAxis:{type:"value", min:0, max:1},
+    series:[{type:"bar", data:prob, barMaxWidth:26}]
+  }, true);
+
+  // Time-structure scatter: time_to_peak vs time_to_trough (colored by bulltrap/fastkill)
+  const pts2 = events.map(e=>{
+    const x = Number(e.time_to_peak_60d);
+    const y = Number(e.time_to_trough_60d);
+    const s = Number(e.streak_len||0);
+    const bt = Number(e.bulltrap_flag||0);
+    const fk = Number(e.fast_kill_flag||0);
+    const lb = Number(e.liquidity_drop);
+    if (!isFinite(x) || !isFinite(y)) return null;
+    return [x,y,s,bt,fk,isFinite(lb)?lb:0, e.file_name||"", e.start_date||""];
+  }).filter(Boolean);
+
+  chart("c_timequad").setOption({
+    color: PALETTE,
+    tooltip:{trigger:"item", formatter:(p)=>{
+      const v=p.value;
+      return `time_to_peak_60d: ${v[0]}<br/>time_to_trough_60d: ${v[1]}<br/>streak_len: ${v[2]}<br/>bulltrap_flag: ${v[3]}<br/>fast_kill_flag: ${v[4]}<br/>liquidity_drop: ${Number(v[5]).toFixed(3)}<br/>file: ${v[6]}<br/>start: ${v[7]}`;
+    }},
+    grid:{left:55,right:20,top:20,bottom:60},
+    xAxis:{type:"value", name:"time_to_peak_60d"},
+    yAxis:{type:"value", name:"time_to_trough_60d"},
+    series:[{
+      type:"scatter",
+      data: pts2,
+      symbolSize:(val)=> Math.min(20, 6 + Number(val[2]||0)),
+    }]
+  }, true);
+
+  // Hist-like bars: distributions of time_to_peak_60d and time_to_trough_60d (0..60)
+  function hist(vals, maxBin=60){
+    const bins = new Array(maxBin+1).fill(0);
+    vals.forEach(v=>{
+      const x = Math.max(0, Math.min(maxBin, Math.round(v)));
+      bins[x] += 1;
+    });
+    return bins;
+  }
+  const tPeak = events.map(e=>Number(e.time_to_peak_60d)).filter(v=>isFinite(v));
+  const tTrough = events.map(e=>Number(e.time_to_trough_60d)).filter(v=>isFinite(v));
+  const hp = hist(tPeak,60);
+  const ht = hist(tTrough,60);
+  const xs = Array.from({length:61}, (_,i)=>String(i));
+
+  chart("c_timehist").setOption({
+    color: PALETTE,
+    tooltip:{trigger:"axis"},
+    grid:{left:55,right:20,top:20,bottom:50},
+    xAxis:{type:"category", data:xs, name:"days"},
+    yAxis:{type:"value"},
+    legend:{bottom:0},
+    series:[
+      {name:"time_to_peak_60d", type:"line", data:hp, showSymbol:false},
+      {name:"time_to_trough_60d", type:"line", data:ht, showSymbol:false},
+    ]
+  }, true);
+  // Script classification charts (mutually exclusive primary class)
+  const scripts = [
+    {k:"fast_kill", name:"fast_kill"},
+    {k:"bulltrap", name:"bulltrap"},
+    {k:"dead_cat_bounce", name:"dead_cat_bounce"},
+    {k:"slow_bleed", name:"slow_bleed"},
+    {k:"regime_shift", name:"regime_shift"},
+    {k:"other", name:"other"},
+  ];
+  const counts = {};
+  scripts.forEach(s=>counts[s.k]=0);
+  events.forEach(e=>{
+    const sp = (e.script_primary||"other");
+    if (counts[sp]==null) counts["other"] += 1;
+    else counts[sp] += 1;
+  });
+
+  chart("c_script_pie").setOption({
+    color: PALETTE,
+    tooltip:{trigger:"item"},
+    legend:{bottom:0},
+    series:[{
+      type:"pie",
+      radius:["35%","70%"],
+      data: scripts.map(s=>({name:s.name, value:counts[s.k]})).filter(x=>x.value>0),
+      label:{formatter:"{b}: {d}%"}
+    }]
+  }, true);
+
+  // Stacked bar by streak bucket
+  const buckets3 = ["1","2","3","4","5","6","7","8-10","11+"];
+  const stackData = {};
+  scripts.forEach(s=>stackData[s.k]=new Array(buckets3.length).fill(0));
+
+  events.forEach(e=>{
+    const b = bucketOfStreak(e.streak_len);
+    const bi = buckets3.indexOf(b);
+    if (bi<0) return;
+    const sp = (e.script_primary||"other");
+    const key = (stackData[sp]!=null) ? sp : "other";
+    stackData[key][bi] += 1;
+  });
+
+  chart("c_script_stack").setOption({
+    color: PALETTE,
+    tooltip:{trigger:"axis", axisPointer:{type:"shadow"}},
+    legend:{bottom:0},
+    grid:{left:55,right:20,top:20,bottom:60},
+    xAxis:{type:"category", data:buckets3},
+    yAxis:{type:"value"},
+    series: scripts.map(s=>({
+      name: s.name,
+      type:"bar",
+      stack:"scripts",
+      data: stackData[s.k],
+      barMaxWidth:26
+    }))
+  }, true);
+
+
+  try{ renderQuadrantVolBody(); }catch(e){}
+
+}
+
+
+
+function renderQuadrantVolBody(){
+  const events = state.filteredEvents || [];
+  const mode = $("selMode") ? $("selMode").value : "single";
+  const minStreak = Number($("selMinStreak").value||1);
+
+  const lookbacks = [20,40,60];
+  const series = [];
+  const thresholds = {x:1.0, y:0.5};
+
+  function meanKey(rows, a, b, key){
+    a = Math.max(0, a); b = Math.min(rows.length-1, b);
+    if (a>b) return NaN;
+    let ss=0, cc=0;
+    for (let i=a;i<=b;i++){
+      const v = Number(rows[i]?.[key]);
+      if (isFinite(v)){ ss+=v; cc+=1; }
+    }
+    return cc>0 ? ss/cc : NaN;
+  }
+
+  function addPoint(arr, x, y, streak, fileName, startDate, lb){
+    arr.push([x, y, streak, fileName||"", startDate||"", lb]);
+  }
+
+  // prepare per-lookback arrays
+  const ptsByLb = new Map(lookbacks.map(lb=>[lb, []]));
+
+  if (mode === "single"){
+    const sheet = state.active;
+    const pack = state.sheets[sheet];
+    if (pack && pack.rows){
+      const rowsAll = pack.rows;
+      const idxByDate = new Map(rowsAll.map((r,i)=>[toStr(r.date), i]));
+      events.filter(e=>Number(e.streak_len||0)>=minStreak).forEach(e=>{
+        const i0 = idxByDate.get(e.start_date);
+        if (i0==null) return;
+        lookbacks.forEach(lb=>{
+          const x = meanKey(rowsAll, i0-lb, i0-1, "vol_ratio_20");
+          const y = meanKey(rowsAll, i0-lb, i0-1, "candle_body_pct");
+          if (isFinite(x) && isFinite(y)){
+            addPoint(ptsByLb.get(lb), x, y, Number(e.streak_len||0), sheet, e.start_date, lb);
+          }
+        });
+      });
+    }
+  } else {
+    // all-sample: use event.file_name + event._start_idx to locate the rows
+    events.filter(e=>Number(e.streak_len||0)>=minStreak).forEach(e=>{
+      const fn = e.file_name || "";
+      const pack = state.sheets[fn];
+      if (!pack || !pack.rows) return;
+      const i0 = e._start_idx;
+      if (i0==null) return;
+      lookbacks.forEach(lb=>{
+        const x = meanKey(pack.rows, i0-lb, i0-1, "vol_ratio_20");
+        const y = meanKey(pack.rows, i0-lb, i0-1, "candle_body_pct");
+        if (isFinite(x) && isFinite(y)){
+          addPoint(ptsByLb.get(lb), x, y, Number(e.streak_len||0), fn, e.start_date, lb);
+        }
+      });
+    });
+  }
+
+  lookbacks.forEach(lb=>{
+    series.push({
+      name: `pre_${lb}d`,
+      type: "scatter",
+      data: ptsByLb.get(lb),
+      symbolSize: (val)=> Math.min(22, 6 + Number(val[2]||0)),
+      emphasis:{focus:"series"},
+    });
+  });
+
+  chart("c_quadrant_vr_body").setOption({
+    color: PALETTE,
+    tooltip:{trigger:"item", formatter:(p)=>{
+      const v=p.value;
+      return `x(vol_ratio_20_mean): ${Number(v[0]).toFixed(3)}<br/>y(candle_body_pct_mean): ${Number(v[1]).toFixed(3)}<br/>streak_len: ${v[2]}<br/>file: ${v[3]}<br/>start: ${v[4]}<br/>lookback: ${v[5]}`;
+    }},
+    legend:{bottom:0},
+    grid:{left:65,right:20,top:20,bottom:70},
+    xAxis:{type:"value", name:"vol_ratio_20 (mean)", min:0},
+    yAxis:{type:"value", name:"candle_body_pct (mean)", min:0, max:1},
+    series: series,
+    // quadrant lines
+    graphic: [
+      {
+        type: "text",
+        left: 70, top: 10,
+        style: {text: "Quadrant split: x=1.0 (avg volume), y=0.5 (body dominance)", fill: "#64748b", fontSize: 12}
+      }
+    ]
+  }, true);
+
+  // Add markLine for each series (ECharts supports per-series markLine); do it via setOption merge
+  const ml = {
+    silent: true,
+    lineStyle: {type:"dashed", width:1, opacity:0.7},
+    data: [{xAxis: thresholds.x}, {yAxis: thresholds.y}]
+  };
+  const opt = charts["c_quadrant_vr_body"].getOption();
+  if (opt && opt.series){
+    opt.series.forEach((ser, i)=>{
+      opt.series[i].markLine = ml;
+    });
+    charts["c_quadrant_vr_body"].setOption(opt, true);
+  }
+}
+
+
+/* init */
+(function(){
+function renderKlineAllModeHint(){
+  // In all-sample mode, a single K-line is meaningless. Show an info message on the K-line chart.
+  const el = $("c_kline");
+  if (!el) return;
+  el.innerHTML = `<div class="tiny muted" style="padding:18px; line-height:1.8">
+    当前为 <b>全样本合并</b> 模式：不同股票的 K 线无法直接叠加成一根“合成K线”。<br/>
+    建议查看：<b>概览</b>（连板分布、事件研究）与 <b>连板事件清单</b>（含连板后回撤/收益）。<br/>
+    如需看某只股票的 K 线，请切回 <b>个股（单标的）</b>。
+  </div>`;
+  // dispose chart instance if exists
+  if (charts["c_kline"]){
+    try{ charts["c_kline"].dispose(); }catch(e){}
+    delete charts["c_kline"];
+  }
+}
+
+function renderFeatureChartsAllMode(){
+  // Use event-level scatter: vol_ratio_20_before vs bb_bw_20_before, colored by streak_len
+  const events = state.filteredEvents || [];
+  const data = events
+    .map(e=>[Number(e.vol_ratio_20_before), Number(e.bb_bw_20_before), Number(e.streak_len||0)])
+    .filter(x=>isFinite(x[0]) && isFinite(x[1]));
+  chart("c_scatter").setOption({
+    color: PALETTE,
+    tooltip:{trigger:"item", formatter:(p)=>`vol_ratio_20_before: ${p.value[0].toFixed(3)}<br/>bb_bw_20_before: ${p.value[1].toFixed(3)}<br/>streak_len: ${p.value[2]}`},
+    grid:{left:55,right:20,top:20,bottom:50},
+    xAxis:{type:"value", name:"vol_ratio_20_before"},
+    yAxis:{type:"value", name:"bb_bw_20_before"},
+    series:[{
+      type:"scatter",
+      data: data,
+      symbolSize: (val)=> Math.min(18, 5 + Number(val[2]||0)),
+    }]
+  }, true);
+
+  // Vol chart: show distribution of post_max_drawdown_60d by streak bucket as boxplot-like (approx via scatter)
+  const buckets = ["1","2","3","4","5","6","7","8-10","11+"];
+  const bucketOf = (n)=>{
+    if (n>=11) return "11+";
+    if (n>=8) return "8-10";
+    return String(n);
+  };
+  const pts = [];
+  events.forEach(e=>{
+    const b = bucketOf(Number(e.streak_len||0));
+    const y = Number(e.post_max_drawdown_60d);
+    if (isFinite(y)) pts.push([b, y]);
+  });
+  chart("c_vol").setOption({
+    color: PALETTE,
+    tooltip:{trigger:"item"},
+    grid:{left:55,right:20,top:20,bottom:60},
+    xAxis:{type:"category", data:buckets, axisLabel:{rotate:0}},
+    yAxis:{type:"value"},
+    legend:{show:false},
+    series:[
+      {name:"post_max_drawdown_60d", type:"scatter", data:pts, symbolSize:6}
+    ]
+  }, true);
+}
+
+function renderTablesAllMode(){
+  // show a compact preview; include file_name first
+  const rows = state.filteredRows.slice(0,80);
+  const head = $("tbl_head");
+  const body = $("tbl_body");
+  head.innerHTML=""; body.innerHTML="";
+  if (!rows.length){
+    head.innerHTML="<th>无数据</th>";
+    body.innerHTML="<tr><td class='muted'>请先读取数据。</td></tr>";
+    return;
+  }
+  const cols = Object.keys(rows[0]);
+  cols.forEach(c=>{
+    const th=document.createElement("th");
+    th.textContent=c;
+    head.appendChild(th);
+  });
+  rows.forEach(r=>{
+    const tr=document.createElement("tr");
+    cols.forEach(c=>{
+      const td=document.createElement("td");
+      td.textContent = toStr(r[c]);
+      tr.appendChild(td);
+    });
+    body.appendChild(tr);
+  });
+}
+
+
+  $("selSheet").innerHTML = "";
+  if ($("selMode")) $("selMode").value = "single";
+  setStatus("尚未读取数据。请先上传 CSV 或 features.xlsx，并点击“读取/计算并生成分析”。","warn");
+  setProgress(0,"");
+})();
+</script>
+</body>
+</html>
